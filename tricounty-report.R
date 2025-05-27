@@ -14,7 +14,7 @@ if (!dir.exists(processed_data_folder)) {
   dir.create(processed_data_folder)
 }
 
-# Read in EpiTrax Data
+# Function to read in input EpiTrax file
 get_input_file <- function() {
   fname <- list.files(input_data_folder)
   
@@ -31,12 +31,15 @@ get_input_file <- function() {
     stop(paste0("Please add an EpiTrax data file (.csv) to the '", input_epitrax_data, "' folder"))
   }
   
-  fpath
+  fname
 }
 
+# - Read in EpiTrax data
 input_file <- get_input_file()
+disease_data <- read.csv(paste0(input_data_folder, input_file), header = TRUE)
+# - Move file to processed_data_folder
+file.rename(paste0(input_data_folder, input_file), paste0(processed_data_folder, input_file))
 
-disease_data <- read.csv(input_file, header = TRUE)
 # - Add columns for month number and month name
 disease_data$patient_mmwr_month <- month(ymd(disease_data$patient_mmwr_year * 10000 + 0101) + disease_data$patient_mmwr_week * 7)
 disease_data$month_name <- month(disease_data$patient_mmwr_month, label=TRUE)
