@@ -197,6 +197,9 @@ create_public_report <- function(month_num) {
     }
   }, current_report$Current_Rate, current_report[[3]])
   
+  # - Wait until final step to convert disease names to public-facing versions
+  current_report$Disease <- public_disease_list$Public_name
+  
   write.csv(current_report, paste0(public_reports_folder, "public_report_",   colnames(current_report)[3], current_report_year,".csv"), row.names = FALSE)
 }
 
