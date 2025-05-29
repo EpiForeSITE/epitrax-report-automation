@@ -37,8 +37,6 @@ read_epitrax_data <- function() {
   # Read data from file
   input_data <- read.csv(fpath, header = TRUE)
   
-  # TODO: Verify data file has correct fields
-  
   # Move processed input file to processed_data_folder
   # - Comment to disable this behavior
   # file.rename(fpath, paste0(processed_data_folder, fname))
@@ -48,17 +46,16 @@ read_epitrax_data <- function() {
 }
 
 # - Read in EpiTrax data
-disease_data <- read.csv(paste0(input_data_folder, "export_7404_051525123227.csv"), header = TRUE)
-# epitrax_data <- read.csv(paste0(input_data_folder, "EpitraxExport_5yrs_Onset.csv"), header = TRUE)
-epitrax_data <- read.csv(paste0(input_data_folder, "export_7404_051525123227.csv"), header = TRUE)
+epitrax_data <- read_epitrax_data()
 
 # Format EpiTrax Data
-# - Format with onset_date
+# - Uncomment to format with onset_date
 # epitrax_data$year <- as.integer(format(as.Date(epitrax_data$patient_disease_onset_date,"%m/%d/%Y"), "%Y"))
 # epitrax_data$month <- as.integer(format(as.Date(epitrax_data$patient_disease_onset_date,"%m/%d/%Y"), "%m"))
 # epitrax_data$patient_disease_onset_date <- NULL
 # epitrax_data$patient_mmwr_year <- NULL
 # colnames(epitrax_data) <- c("disease", "year", "month")
+
 # - Format with patient_mmwr_week
 epitrax_data$month <- month(ymd(epitrax_data$patient_mmwr_year * 10000 + 0101) + epitrax_data$patient_mmwr_week * 7)
 epitrax_data$patient_mmwr_week <- NULL
@@ -118,11 +115,8 @@ for (y in sort(unique(epitrax_data$year))) {
   # - Update column names to more human-readable format
   colnames(m_df) <- c("disease", month.abb[1:(ncol(m_df)-1)])
   
-  # TODO: include full disease list, not just those in the dataset (use 0s)
-  
+  # - Write to CSV
   write.csv(m_df, paste0(internal_report_folder, "monthly_counts_", y, ".csv"), row.names = FALSE)
-  
-  # print(head(m_df))
 }
 
 # Compute monthly averages for all years except current year -------------------
@@ -154,7 +148,6 @@ write.csv(monthly_5yr_avgs, paste0(internal_report_folder, "monthly_5yr_avgs.csv
 
 # Prepare Public Report
 public_disease_list <- read.csv("other_data/public_report_disease_names.csv", header = TRUE)
-# TODO: if this fails (doc doesn't exist, just skip this step, don't fail completely)
 
 # - Remove rows from monthly_5yr_avgs that aren't going into the public report
 monthly_5yr_avgs <- subset(monthly_5yr_avgs, monthly_5yr_avgs$disease %in% public_disease_list$EpiTrax_name)
@@ -177,7 +170,6 @@ current_report_year <- max(monthly_counts$year)
 current_report_month <- max(monthly_counts[monthly_counts$year == current_report_year,]$month) - 1
 
 # create_public_report() creates a public report for the given month
-# - TODO: Make this roll back a year if current report is Jan or Feb
 create_public_report <- function(month_num) {
   current_month_counts <- monthly_counts[monthly_counts$year == current_report_year & monthly_counts$month == month_num,c("disease","counts")]
   current_month_counts <- subset(current_month_counts, current_month_counts$disease %in% monthly_5yr_avgs$disease)
