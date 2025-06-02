@@ -1,4 +1,5 @@
 library(lubridate)
+library(writexl)
 
 # ------------------------------------------------------------------------------
 # Set up file system -----------------------------------------------------------
@@ -30,6 +31,8 @@ write_public_report <- function(data, filename) {
             file.path(public_reports_folder, filename),
             row.names = FALSE)
 }
+# - List of internal reports that will be combined into single .xlsx file
+xl_files <- list()
 
 # ------------------------------------------------------------------------------
 # Define Helper Functions ------------------------------------------------------
@@ -175,6 +178,8 @@ annual_counts[is.na(annual_counts)] <- 0
 colnames(annual_counts) <- c("disease", sort(unique(epitrax_data$year)))
 # - Write to CSV
 write_internal_report(annual_counts, "annual_counts.csv")
+# - Add to Excel List
+xl_files[["annual_counts"]] <- annual_counts
 
 # ------------------------------------------------------------------------------
 # Compute monthly counts for each year -----------------------------------------
@@ -207,7 +212,11 @@ for (y in sort(unique(epitrax_data$year))) {
   colnames(m_df) <- c("disease", month.abb[1:(ncol(m_df)-1)])
   
   # - Write to CSV
-  write_internal_report(m_df, paste0("monthly_counts_", y, ".csv"))
+  fname <- paste0("monthly_counts_", y)
+  write_internal_report(m_df, paste0(fname, ".csv"))
+  
+  # - Add to Excel List
+  xl_files[[fname]] = m_df
 }
 
 # ------------------------------------------------------------------------------
@@ -244,6 +253,12 @@ colnames(monthly_5yr_avgs) <- c("disease",
 avgs_fname <- with(epitrax_data_5yr,
                    paste0("monthly_avgs_", min(year), "-", max(year), ".csv"))
 write_internal_report(monthly_5yr_avgs, avgs_fname)
+
+# - Add to Excel List
+xl_files[["monthly_5yr_avgs"]] <- monthly_5yr_avgs
+
+# - Combine internal reports into single .xlsx file
+write_xlsx(xl_files, file.path(internal_reports_folder, "internal_reports.xlsx"))
 
 # ------------------------------------------------------------------------------
 # Prepare Public Report --------------------------------------------------------
@@ -302,7 +317,7 @@ create_public_report <- function(month_num) {
   
   # - Add Trends column
   current_report$Trend <- mapply(function(x, y) {
-    ifelse(x > y, "HIGHER", ifelse(x < y, "LOWER", "SAME"))
+    ifelse(x > y, "↑", ifelse(x < y, "↓", "-"))
   }, current_report$Current_Rate, current_report[[3]])
   
   # - Wait until final step to convert disease names to public-facing versions
