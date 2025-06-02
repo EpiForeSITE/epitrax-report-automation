@@ -3,49 +3,43 @@ library(writexl)
 
 # ------------------------------------------------------------------------------
 # Set up file system -----------------------------------------------------------
-# - Create folders if needed
 input_data_folder <- "input_epitrax_data"
-if (!dir.exists(input_data_folder)) {
-  dir.create(input_data_folder)
-}
 processed_data_folder <- "processed_epitrax_data"
-if (!dir.exists(processed_data_folder)) {
-  dir.create(processed_data_folder)
-}
 internal_reports_folder <- "internal_reports"
-if (!dir.exists(internal_reports_folder)) {
-  dir.create(internal_reports_folder)
-}
 public_reports_folder <- "public_reports"
-if (!dir.exists(public_reports_folder)) {
-  dir.create(public_reports_folder)
+
+xl_files <- list() # Internal reports to combine into single .xlsx file
+
+# - Create folders if needed
+for (f in c(input_data_folder, processed_data_folder, 
+            internal_reports_folder, public_reports_folder)) {
+  if (!dir.exists(f)) {
+    dir.create(f)
+  }
 }
-# - Define helper functions for writing report CSV files
-write_internal_report <- function(data, filename) {
-  write.csv(data,
-            file.path(internal_reports_folder, filename),
-            row.names = FALSE)
-}
-write_public_report <- function(data, filename) {
-  write.csv(data,
-            file.path(public_reports_folder, filename),
-            row.names = FALSE)
-}
-# - List of internal reports that will be combined into single .xlsx file
-xl_files <- list()
 
 # ------------------------------------------------------------------------------
 # Define Helper Functions ------------------------------------------------------
 
-# Function to validate data
+# Writes report CSV files
+write_report_csv <- function(data, filename, is.public = FALSE) {
+  write.csv(data,
+            file.path(ifelse(is.public, 
+                             public_reports_folder, 
+                             internal_reports_folder),
+                      filename),
+            row.names = FALSE)
+}
+
+# Validates input EpiTrax data
 validate_data <- function(data) {
   # Check column names
-  expected_colnames <- c("patient_mmwr_year", "patient_mmwr_week", "patient_disease")
-  actual_colnames <- colnames(data)
+  expected_cols <- c("patient_mmwr_year", "patient_mmwr_week", "patient_disease")
+  actual_cols <- colnames(data)
   
-  if (!all(expected_colnames %in% actual_colnames)) {
+  if (!all(expected_cols %in% actual_cols)) {
     stop("The EpiTrax data is missing one of the following fields:\n\n\t",
-         paste(expected_colnames, collapse=", "), 
+         paste(expected_cols, collapse=", "), 
          "\n\nPlease add the missing fields to the file and try again.")
   }
   # Check column data types
@@ -61,13 +55,13 @@ validate_data <- function(data) {
     )
   }
   # Remove all columns we're not using
-  # - Note this also rearranges the columns into the order we expect below
-  data <- data[expected_colnames]
+  # - Note this also rearranges the columns into the order of expected_cols
+  data <- data[expected_cols]
   
   data
 }
 
-# Function to format EpiTrax data using 'patient_mmwr_week' column
+# Formats input EpiTrax data using 'patient_mmwr_week' column
 format_week_num <- function(data) {
   # Validate data
   data <- validate_data(data)
@@ -80,11 +74,13 @@ format_week_num <- function(data) {
   data$patient_mmwr_week <- NULL
   data$counts <- 1 # Makes easier to use aggregate()
   colnames(data) <- c("year", "disease", "month", "counts")
+  # - Rearrange columns for easier debugging
+  data <- data[c("disease", "month", "year", "counts")]
 
   data
 }
 
-# Function to read in input EpiTrax file
+# Reads in input EpiTrax data
 read_epitrax_data <- function() {
   # Get file name from input data folder
   fname <- list.files(input_data_folder)
@@ -115,43 +111,70 @@ read_epitrax_data <- function() {
   input_data
 }
 
-# Function to read in the public disease list (CSV)
-get_public_disease_list <- function(epitrax_data) {
+# Reads in the public disease list (CSV)
+# - This file contains two columns that map the EpiTrax disease name to
+# - a public-facing name for the public report
+get_public_disease_list <- function(default_diseases) {
   fname <- "disease_list_for_public_report.csv"
   fpath <- file.path(public_reports_folder, fname)
   
-  # If the file doesn't exist, the function will return the list of diseases
-  # - from the input EpiTrax dataset instead and give the user a warning
-  if (!file.exists(fpath) || !grepl("\\.csv$", fpath)) {
-    warning("File '", fname, "' not found in '", public_reports_folder,
-            "' folder. Using list from EpiTrax input dataset instead.")
+  if (file.exists(fpath)) {
     
-    diseases <- sort(unique(epitrax_data$disease))
-    disease_list <- data.frame(
-      EpiTrax_name = diseases,
-      Public_name = diseases
-    )
-    
-    disease_list
-  } else {
-    disease_list <- read.csv(fpath, header = TRUE)
+    d_list <- read.csv(fpath, header = TRUE)
     
     # Validate file
-    if (is.null(disease_list$EpiTrax_name) || is.null(disease_list$Public_name)) {
+    if (is.null(d_list$EpiTrax_name) || is.null(d_list$Public_name)) {
       stop("File '", fpath, "' is incorrectly formatted. Please use the column 
            names: 'EpiTrax_name' and 'Public_name'.")
     }
     
-    disease_list
+    d_list
+    
+  } else {
+    # If the file doesn't exist, use the list of diseases in the input data
+    warning("File '", fname, "' not found in '", public_reports_folder,
+            "' folder. Using list from EpiTrax input dataset instead.")
+    
+    default_diseases <- sort(default_diseases)
+    
+    d_list <- data.frame(
+      EpiTrax_name = default_diseases,
+      Public_name = default_diseases
+    )
+    
+    d_list
   }
+}
+
+# Reshape data frame with each month as a column
+reshape_monthly_wide <- function(df) {
+  m_df <- with(df, reshape(
+    merge(
+      df,
+      expand.grid(
+        disease = unique(disease),
+        month = unique(month)
+      ),
+      all = TRUE
+    ),
+    direction = "wide",
+    idvar = "disease",
+    timevar = "month"
+  ))
+  # - Set NA values to 0
+  m_df[is.na(m_df)] <- 0
+  # - Update column names to more human-readable format
+  colnames(m_df) <- c("disease", month.abb[1:(ncol(m_df) - 1)])
+  
+  m_df
 }
 
 # ------------------------------------------------------------------------------
 # Read in EpiTrax data ---------------------------------------------------------
 epitrax_data <- read_epitrax_data()
-
-# Rearrange columns (for DEBUGGING)
-epitrax_data <- epitrax_data[,c("disease", "month", "year", "counts")]
+epitrax_data_yrs <- sort(unique(epitrax_data$year))
+epitrax_data_diseases <- unique(epitrax_data$disease)
+report_year <- max(epitrax_data_yrs)
 
 # ------------------------------------------------------------------------------
 # Compute annual counts for each disease ---------------------------------------
@@ -175,45 +198,31 @@ annual_counts <- with(annual_counts, reshape(
 # - Set NA values to 0
 annual_counts[is.na(annual_counts)] <- 0
 # - Update column names to more human-readable format
-colnames(annual_counts) <- c("disease", sort(unique(epitrax_data$year)))
+colnames(annual_counts) <- c("disease", epitrax_data_yrs)
 # - Write to CSV
-write_internal_report(annual_counts, "annual_counts.csv")
+write_report_csv(annual_counts, "annual_counts.csv")
 # - Add to Excel List
 xl_files[["annual_counts"]] <- annual_counts
 
 # ------------------------------------------------------------------------------
 # Compute monthly counts for each year -----------------------------------------
-monthly_counts <- aggregate(counts ~ disease + year + month, 
-                            data = epitrax_data, 
-                            FUN = sum)
+month_counts <- aggregate(counts ~ disease + year + month, 
+                          data = epitrax_data, 
+                          FUN = sum)
 
-for (y in sort(unique(epitrax_data$year))) {
+for (y in epitrax_data_yrs) {
   # - Extract counts for given year
-  m_df <- monthly_counts[monthly_counts$year == y, ]
+  m_df <- month_counts[month_counts$year == y, ]
+  
   # - Remove year column (don't want to save it to CSV)
   m_df$year <- NULL
+  
   # - Reshape data to use months as columns and disease as rows
-  m_df <- with(m_df, reshape(
-    merge(
-      m_df,
-      expand.grid(
-        disease = unique(disease),
-        month = unique(month)
-      ),
-      all = TRUE
-    ),
-    direction = "wide",
-    idvar = "disease",
-    timevar = "month"
-  ))
-  # - Set NA values to 0
-  m_df[is.na(m_df)] <- 0
-  # - Update column names to more human-readable format
-  colnames(m_df) <- c("disease", month.abb[1:(ncol(m_df)-1)])
+  m_df <- reshape_monthly_wide(m_df)
   
   # - Write to CSV
   fname <- paste0("monthly_counts_", y)
-  write_internal_report(m_df, paste0(fname, ".csv"))
+  write_report_csv(m_df, paste0(fname, ".csv"))
   
   # - Add to Excel List
   xl_files[[fname]] = m_df
@@ -222,125 +231,99 @@ for (y in sort(unique(epitrax_data$year))) {
 # ------------------------------------------------------------------------------
 # Compute monthly averages for all years except current year -------------------
 # - Extract all previous years
-epitrax_data_5yr <- with(epitrax_data, epitrax_data[year != max(year),])
+epitrax_data_prev_yrs <- epitrax_data[epitrax_data$year != report_year,]
+num_yrs <- length(unique(epitrax_data_prev_yrs$year))
 
 # - Compute average counts for each month
-monthly_5yr_avgs <- aggregate(counts ~ disease + month, 
-                              data = epitrax_data_5yr, 
-                              FUN = sum)
-num_yrs <- length(unique(epitrax_data_5yr$year))
-monthly_5yr_avgs$counts <- monthly_5yr_avgs$counts / num_yrs
+monthly_avgs <- aggregate(counts ~ disease + month, 
+                          data = epitrax_data_prev_yrs, 
+                          FUN = sum)
+
+monthly_avgs$counts <- monthly_avgs$counts / num_yrs
+
 # - Reshape data to use months as columns and disease as rows
-monthly_5yr_avgs <- with(monthly_5yr_avgs, reshape(
-  merge(
-    monthly_5yr_avgs,
-    expand.grid(
-      disease = unique(disease),
-      month = unique(month)
-    ),
-    all = TRUE
-  ),
-  direction = "wide",
-  idvar = "disease",
-  timevar = "month"
-))
-# - Set NA values to 0
-monthly_5yr_avgs[is.na(monthly_5yr_avgs)] <- 0
-# - Update column names to more human-readable format
-colnames(monthly_5yr_avgs) <- c("disease", 
-                                month.abb[1:(ncol(monthly_5yr_avgs) - 1)])
+monthly_avgs <- reshape_monthly_wide(monthly_avgs)
+
 # - Write to CSV
-avgs_fname <- with(epitrax_data_5yr,
+avgs_fname <- with(epitrax_data_prev_yrs,
                    paste0("monthly_avgs_", min(year), "-", max(year), ".csv"))
-write_internal_report(monthly_5yr_avgs, avgs_fname)
+write_report_csv(monthly_avgs, avgs_fname)
 
 # - Add to Excel List
-xl_files[["monthly_5yr_avgs"]] <- monthly_5yr_avgs
+xl_files[["monthly_avgs"]] <- monthly_avgs
 
 # - Combine internal reports into single .xlsx file
-write_xlsx(xl_files, file.path(internal_reports_folder, "internal_reports.xlsx"))
+write_xlsx(xl_files, 
+           file.path(internal_reports_folder, "internal_reports.xlsx"))
 
 # ------------------------------------------------------------------------------
 # Prepare Public Report --------------------------------------------------------
-public_disease_list <- get_public_disease_list(epitrax_data)
+diseases <- get_public_disease_list(epitrax_data_diseases)
 
-# - Remove rows from monthly_5yr_avgs that aren't going into the public report
-monthly_5yr_avgs <- subset(monthly_5yr_avgs, 
-                           disease %in% public_disease_list$EpiTrax_name)
+# - Remove rows from monthly_avgs that aren't going into the public report
+monthly_avgs <- subset(monthly_avgs, disease %in% diseases$EpiTrax_name)
+
 # - Get diseases from public report list that weren't in the EpiTrax data
-missing_diseases <- subset(public_disease_list, 
-                           !(EpiTrax_name %in% monthly_5yr_avgs$disease))
+missing_diseases <- subset(diseases, !(EpiTrax_name %in% monthly_avgs$disease))
 
 # If there are any missing diseases, add them
 if (length(missing_diseases$EpiTrax_name) > 0) {
   # - Fill the missing diseases in with avg = 0
-  missing_5yr_avgs <- data.frame(
+  missing_avgs <- data.frame(
     disease = missing_diseases$EpiTrax_name
   )
-  present_colnames <- colnames(monthly_5yr_avgs)
-  missing_colnames <- present_colnames[2:length(present_colnames)]
-  missing_5yr_avgs[, missing_colnames] <- 0.0
   
-  # - Combine monthly_5yr_avgs with missing_5yr_avgs
-  monthly_5yr_avgs <- rbind(monthly_5yr_avgs, missing_5yr_avgs)
+  missing_cols <- colnames(monthly_avgs)[2:length(colnames(monthly_avgs))]
+  missing_avgs[, missing_cols] <- 0.0
+  
+  # - Combine monthly_avgs with missing_avgs
+  monthly_avgs <- rbind(monthly_avgs, missing_avgs)
+  
   # - Sort alphabetically so missing diseases are correctly placed
-  monthly_5yr_avgs <- monthly_5yr_avgs[order(monthly_5yr_avgs$disease),]
+  monthly_avgs <- monthly_avgs[order(monthly_avgs$disease),]
 }
 
-# - Most recent month is the maximum month included in the data minus 1
-current_report_year <- max(monthly_counts$year)
-current_report_month <- max(
-  monthly_counts[monthly_counts$year == current_report_year
-                 ,]$month) - 1
+# - Find the previous month of the report year
+report_month <- max(month_counts[month_counts$year == report_year, ]$month) - 1
 
 # create_public_report() creates a public report for the given month
 create_public_report <- function(month_num) {
-  current_month_counts <- with(monthly_counts, 
-                               monthly_counts[
-                                 year == current_report_year & month == month_num,
-                                 c("disease","counts")])
-  current_month_counts <- subset(current_month_counts, 
-                                 disease %in% monthly_5yr_avgs$disease)
+  
+  m_counts <- with(month_counts, 
+                   month_counts[year == report_year & month == month_num,
+                                c("disease","counts")])
+  # - Only take the rows with data in the final report
+  m_counts <- subset(m_counts, disease %in% monthly_avgs$disease)
   
   # - Create the report data frame initializing the Current_Rate column to 0
-  current_report <- data.frame(
-    Disease = monthly_5yr_avgs$disease,
+  m_report <- data.frame(
+    Disease = monthly_avgs$disease,
     Current_Rate = 0, 
-    Historical_Rate = monthly_5yr_avgs[month_num + 1]
+    Historical_Rate = monthly_avgs[month_num + 1]
   )
   
-  # - Update the Current_Rate column with values from current_month_counts
-  for (i in 1:length(current_month_counts$disease)) {
-    current_report[current_report$Disease == current_month_counts$disease[i]
-                   , ]$Current_Rate <- current_month_counts$counts[i]
+  # - Update the Current_Rate column with values from m_counts
+  for (i in 1:length(m_counts$disease)) {
+    d <- m_counts$disease[i]
+    m_report[m_report$Disease == d, ]$Current_Rate <- m_counts$counts[i]
   }
   
   # - Add Trends column
-  current_report$Trend <- mapply(function(x, y) {
+  m_report$Trend <- mapply(function(x, y) {
     ifelse(x > y, "↑", ifelse(x < y, "↓", "-"))
-  }, current_report$Current_Rate, current_report[[3]])
+  }, m_report$Current_Rate, m_report[[3]])
   
   # - Wait until final step to convert disease names to public-facing versions
-  current_report$Disease <- public_disease_list$Public_name
+  m_report$Disease <- diseases$Public_name
   
   # - Write to CSV file
-  write_public_report(
-    current_report, 
-    paste0("public_report_",
-           colnames(current_report)[3],
-           current_report_year,
-           ".csv")
-    )
+  write_report_csv(
+    m_report, 
+    paste0("public_report_", colnames(m_report)[3], report_year, ".csv"),
+    is.public = TRUE)
 }
 
-# - Create report table for most recent month
-create_public_report(current_report_month)
-
-# - Create report table for one month prior
-create_public_report(current_report_month - 1)
-
-# - Create report table for two months prior
-create_public_report(current_report_month - 2)
-
-
-
+# - Create report table for most recent month and for 1 and 2 months prior
+create_public_report(report_month)
+create_public_report(report_month - 1)
+create_public_report(report_month - 2)
