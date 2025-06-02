@@ -62,30 +62,39 @@ read_epitrax_data <- function() {
   input_data
 }
 
+format_onset_date <- function(data) {
+  data$year <- as.integer(
+    format(as.Date(data$patient_disease_onset_date,"%m/%d/%Y"), "%Y")
+  )
+  data$month <- as.integer(
+    format(as.Date(data$patient_disease_onset_date,"%m/%d/%Y"), "%m")
+  )
+  data$patient_disease_onset_date <- NULL
+  data$patient_mmwr_year <- NULL
+  colnames(data) <- c("disease", "year", "month")
+  data
+}
+
+format_week_num <- function(data) {
+  data$month <- with(data, month(
+    ymd(patient_mmwr_year * 10000 + 0101) + 
+      patient_mmwr_week * 7
+  ))
+  data$patient_mmwr_week <- NULL
+  data$counts <- 1 # Makes easier to use aggregate()
+  colnames(data) <- c("year", "disease", "month", "counts")
+  data
+}
+
 # ------------------------------------------------------------------------------
 # Read in EpiTrax data ---------------------------------------------------------
 epitrax_data <- read_epitrax_data()
 
 # Format EpiTrax Data
 # - Uncomment to format with onset_date
-# epitrax_data$year <- as.integer(
-#   format(as.Date(epitrax_data$patient_disease_onset_date,"%m/%d/%Y"), "%Y")
-# )
-# epitrax_data$month <- as.integer(
-#   format(as.Date(epitrax_data$patient_disease_onset_date,"%m/%d/%Y"), "%m")
-# )
-# epitrax_data$patient_disease_onset_date <- NULL
-# epitrax_data$patient_mmwr_year <- NULL
-# colnames(epitrax_data) <- c("disease", "year", "month")
-
+# epitrax_data <- format_onset_date(epitrax_data)
 # - Format with patient_mmwr_week
-epitrax_data$month <- month(
-  ymd(epitrax_data$patient_mmwr_year * 10000 + 0101) + 
-  epitrax_data$patient_mmwr_week * 7
-)
-epitrax_data$patient_mmwr_week <- NULL
-epitrax_data$counts <- 1 # Makes easier to use aggregate()
-colnames(epitrax_data) <- c("year", "disease", "month", "counts")
+epitrax_data <- format_week_num(epitrax_data)
 
 # Rearrange columns (for DEBUGGING)
 epitrax_data <- epitrax_data[,c("disease", "month", "year", "counts")]
@@ -96,19 +105,19 @@ annual_counts <- aggregate(counts ~ disease + year,
                            data = epitrax_data, 
                            FUN = sum)
 # - Reshape data to use years as columns and diseases as rows
-annual_counts <- reshape(
+annual_counts <- with(annual_counts, reshape(
   merge(
     annual_counts,
     expand.grid(
-      disease = unique(annual_counts$disease),
-      year = unique(annual_counts$year)
+      disease = unique(disease),
+      year = unique(year)
     ),
     all = TRUE
   ),
   direction = "wide",
   idvar = "disease",
   timevar = "year"
-)
+))
 # - Set NA values to 0
 annual_counts[is.na(annual_counts)] <- 0
 # - Update column names to more human-readable format
@@ -128,19 +137,19 @@ for (y in sort(unique(epitrax_data$year))) {
   # - Remove year column (don't want to save it to CSV)
   m_df$year <- NULL
   # - Reshape data to use months as columns and disease as rows
-  m_df <- reshape(
+  m_df <- with(m_df, reshape(
     merge(
       m_df,
       expand.grid(
-        disease = unique(m_df$disease),
-        month = unique(m_df$month)
+        disease = unique(disease),
+        month = unique(month)
       ),
       all = TRUE
     ),
     direction = "wide",
     idvar = "disease",
     timevar = "month"
-  )
+  ))
   # - Set NA values to 0
   m_df[is.na(m_df)] <- 0
   # - Update column names to more human-readable format
@@ -153,7 +162,8 @@ for (y in sort(unique(epitrax_data$year))) {
 # ------------------------------------------------------------------------------
 # Compute monthly averages for all years except current year -------------------
 # - Extract all previous years
-epitrax_data_5yr <- epitrax_data[epitrax_data$year != max(epitrax_data$year),]
+epitrax_data_5yr <- with(epitrax_data, epitrax_data[year != max(year),])
+
 # - Compute average counts for each month
 monthly_5yr_avgs <- aggregate(counts ~ disease + month, 
                               data = epitrax_data_5yr, 
@@ -161,31 +171,28 @@ monthly_5yr_avgs <- aggregate(counts ~ disease + month,
 num_yrs <- length(unique(epitrax_data_5yr$year))
 monthly_5yr_avgs$counts <- monthly_5yr_avgs$counts / num_yrs
 # - Reshape data to use months as columns and disease as rows
-monthly_5yr_avgs <- reshape(
+monthly_5yr_avgs <- with(monthly_5yr_avgs, reshape(
   merge(
     monthly_5yr_avgs,
     expand.grid(
-      disease = unique(monthly_5yr_avgs$disease),
-      month = unique(monthly_5yr_avgs$month)
+      disease = unique(disease),
+      month = unique(month)
     ),
     all = TRUE
   ),
   direction = "wide",
   idvar = "disease",
   timevar = "month"
-)
+))
 # - Set NA values to 0
 monthly_5yr_avgs[is.na(monthly_5yr_avgs)] <- 0
 # - Update column names to more human-readable format
 colnames(monthly_5yr_avgs) <- c("disease", 
                                 month.abb[1:(ncol(monthly_5yr_avgs) - 1)])
 # - Write to CSV
-monthly_avgs_filename <- paste0("monthly_5yr_avgs_",
-                                min(epitrax_data_5yr$year),
-                                "_",
-                                max(epitrax_data_5yr$year),
-                                ".csv")
-write_internal_report(monthly_5yr_avgs, monthly_avgs_filename)
+avgs_fname <- with(epitrax_data_5yr,
+                   paste0("monthly_avgs_", min(year), "-", max(year), ".csv"))
+write_internal_report(monthly_5yr_avgs, avgs_fname)
 
 # Prepare Public Report
 public_disease_list <- read.csv("other_data/public_report_disease_names.csv", 
@@ -219,9 +226,10 @@ current_report_month <- max(
 
 # create_public_report() creates a public report for the given month
 create_public_report <- function(month_num) {
-  current_month_counts <- monthly_counts[
-    monthly_counts$year == current_report_year & monthly_counts$month == month_num,
-    c("disease","counts")]
+  current_month_counts <- with(monthly_counts, 
+                               monthly_counts[
+                                 year == current_report_year & month == month_num,
+                                 c("disease","counts")])
   current_month_counts <- subset(current_month_counts, 
                                  disease %in% monthly_5yr_avgs$disease)
   
