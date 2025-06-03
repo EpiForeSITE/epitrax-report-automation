@@ -310,7 +310,7 @@ create_public_report <- function(month_num) {
   
   # - Add Trends column
   m_report$Trend <- mapply(function(x, y) {
-    ifelse(x > y, "↑", ifelse(x < y, "↓", "-"))
+    ifelse(x > y, "↑", ifelse(x < y, "↓", "→"))
   }, m_report$Current_Rate, m_report[[3]])
   
   # - Wait until final step to convert disease names to public-facing versions
