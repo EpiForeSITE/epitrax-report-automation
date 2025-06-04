@@ -18,6 +18,11 @@ for (f in c(input_data_folder, processed_data_folder,
   }
 }
 
+# - Remove old internal reports
+do.call(file.remove, list(list.files(internal_reports_folder, full.names = TRUE)))
+# - Remove old public reports
+do.call(file.remove, list(list.files(public_reports_folder, full.names = TRUE)[grepl("public_report_", list.files(public_reports_folder, full.names = TRUE))]))
+
 # ------------------------------------------------------------------------------
 # Define Helper Functions ------------------------------------------------------
 
@@ -77,23 +82,30 @@ format_week_num <- function(data) {
   # - Rearrange columns for easier debugging
   data <- data[c("disease", "month", "year", "counts")]
 
+  # - Extract last years of data
+  data <- with(data, data[year >= (max(year) - 5), ])
+
   data
 }
 
 # Reads in input EpiTrax data
-read_epitrax_data <- function() {
+read_epitrax_data <- function(input_folder, processed_folder = NULL) {
   # Get file name from input data folder
-  fname <- list.files(input_data_folder)
+  fname <- list.files(input_folder)
+  
+  if (length(fname) == 0) {
+    stop("No input file provided.")
+  }
   
   # Check for only 1 file
   if (length(fname) > 1) {
-    stop("Please include only 1 file in the '", input_data_folder, "' folder.")
+    stop("Please include only 1 file in the '", input_folder, "' folder.")
   }
   
   # Check file has correct extension
-  fpath <- file.path(input_data_folder, fname)
+  fpath <- file.path(input_folder, fname)
   if (!file.exists(fpath) || !grepl("\\.csv$", fpath)) {
-    stop("Please add an EpiTrax data file (.csv) to the '", input_data_folder, 
+    stop("Please add an EpiTrax data file (.csv) to the '", input_folder, 
          "' folder")
   }
   
@@ -103,9 +115,10 @@ read_epitrax_data <- function() {
   # Validate and format data
   input_data <- format_week_num(input_data)
   
-  # Move processed input file to processed_data_folder
-  # - Comment to disable this behavior
-  # file.rename(fpath, file.path(processed_data_folder, fname))
+  # Move processed input file to processed_folder (if provided)
+  if (!is.null(processed_folder)) {
+    file.rename(fpath, file.path(processed_folder, fname))
+  }
   
   # Return data from file
   input_data
@@ -171,7 +184,7 @@ reshape_monthly_wide <- function(df) {
 
 # ------------------------------------------------------------------------------
 # Read in EpiTrax data ---------------------------------------------------------
-epitrax_data <- read_epitrax_data()
+epitrax_data <- read_epitrax_data(input_data_folder)
 epitrax_data_yrs <- sort(unique(epitrax_data$year))
 epitrax_data_diseases <- unique(epitrax_data$disease)
 report_year <- max(epitrax_data_yrs)
@@ -299,7 +312,7 @@ create_public_report <- function(month_num) {
   m_report <- data.frame(
     Disease = monthly_avgs$disease,
     Current_Rate = 0, 
-    Historical_Rate = monthly_avgs[month_num + 1]
+    Historical_Rate = round(monthly_avgs[month_num + 1], digits = 2)
   )
   
   # - Update the Current_Rate column with values from m_counts
