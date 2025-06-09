@@ -262,8 +262,7 @@ get_internal_disease_list <- function(filepath, default_diseases) {
     default_diseases <- sort(default_diseases)
     
     d_list <- data.frame(
-      EpiTrax_name = default_diseases,
-      Public_name = default_diseases
+      EpiTrax_name = default_diseases
     )
     
     d_list
