@@ -94,6 +94,11 @@ validate_data <- function(data) {
   # - Note this also rearranges the columns into the order of expected_cols
   data <- data[expected_cols]
   
+  if (any(is.na(data))) {
+    stop("The EpiTrax dataset contains missing or NA values. Please correct the 
+         data and try again.")
+  }
+  
   data
 }
 
