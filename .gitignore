@@ -9,7 +9,7 @@
 input_epitrax_data/
 internal_reports/
 processed_epitrax_data/
-other_data/
 public_reports/
+report_settings/
 test_data/
 disease_list_for_public_report.csv

@@ -1,6 +1,7 @@
 # Libraries --------------------------------------------------------------------
 library(lubridate)
 library(writexl)
+library(yaml)
 
 # Define Helper Functions ------------------------------------------------------
 
@@ -12,15 +13,40 @@ library(writexl)
 #' @param processed Filepath. Folder where processed input files are moved.
 #' @param internal Filepath. Folder to hold internal reports.
 #' @param public Filepath. Folder to hold public reports.
+#' @param settings Filepath. Folder to hold report settings.
 #' 
 #' @returns NULL.
-create_filesystem <- function(input, processed, internal, public) {
+create_filesystem <- function(input, processed, internal, public, settings) {
   # - Create folders if needed
-  for (f in c(input, processed, internal, public)) {
+  for (f in c(input, processed, internal, public, settings)) {
     if (!dir.exists(f)) {
       dir.create(f)
     }
   }
+}
+
+#' Read in the report config YAML file
+#' 
+#' 'read_report_config' reads in the config YAML file
+#' 
+#' @param config_filepath Filepath. Path to report config file.
+#' 
+#' @returns a named list with an attribute of 'keys' from the file.
+read_report_config <- function(config_filepath) {
+  config <- read_yaml(config_filepath)
+  
+  if (is.null(config$county_population) || is.null(config$rounding_decimals)) {
+    stop("Report config file missing 'county_population' or 
+         'rounding_decimals'.")
+  }
+  
+  if (class(config$county_population) != "integer" ||
+      class(config$rounding_decimals) != "integer") {
+    stop("'county_population' and 'rounding_decimals' in report config should
+         be integers.")
+  }
+  
+  config
 }
 
 #' Clear out old reports before generating new ones.
@@ -35,9 +61,7 @@ create_filesystem <- function(input, processed, internal, public) {
 clear_old_reports <- function(i_folder, p_folder) {
   # - Remove old internal reports
   i_reports <- list(list.files(i_folder, full.names = TRUE))
-  p_reports <- grepl(".xlsx|public_report_", 
-                     list.files(p_folder, full.names = TRUE))
-  p_reports <- list(list.files(p_folder, full.names = TRUE)[p_reports])
+  p_reports <- list(list.files(p_folder, full.names = TRUE))
   
   old_reports <- c(i_reports, p_reports)
   
@@ -93,6 +117,13 @@ validate_data <- function(data) {
   # Remove all columns we're not using
   # - Note this also rearranges the columns into the order of expected_cols
   data <- data[expected_cols]
+  
+  # Remove rows with missing or NA values
+  if (any(is.na(data))) {
+    warning("The EpiTrax dataset contains missing or NA values which will be 
+            ignored when generating reports.")
+  }
+  data <- na.omit(data)
   
   data
 }
@@ -198,6 +229,46 @@ reshape_monthly_wide <- function(df) {
   m_df
 }
 
+#' Get the internal disease list
+#' 
+#' 'get_internal_disease_list' reads the internal list from a given CSV file or 
+#' uses the default diseases, if the file doesn't exist.
+#' 
+#' The provided internal disease list file must contain one column of EpiTrax 
+#' disease names (EpiTrax_name) to include in internal reports.
+#' @param filepath Filepath. Internal disease list CSV file.
+#' @param default_diseases String vector. List of default diseases to use if the
+#' above file doesn't exist.
+#' 
+#' @returns A dataframe containing the diseases to include in the public report 
+#' and the name to use for each disease in the public report.
+get_internal_disease_list <- function(filepath, default_diseases) {
+  
+  if (file.exists(filepath)) {
+    
+    d_list <- read.csv(filepath, header = TRUE)
+    
+    # Validate file
+    if (is.null(d_list$EpiTrax_name)) {
+      stop("File '", filepath, "' missing required column 'EpiTrax_name'.")
+    }
+    
+    d_list
+    
+  } else {
+    # If the file doesn't exist, use the default list of diseases provided
+    warning("File '", filepath, "' not found. Using default list instead.")
+    
+    default_diseases <- sort(default_diseases)
+    
+    d_list <- data.frame(
+      EpiTrax_name = default_diseases
+    )
+    
+    d_list
+  }
+}
+
 #' Get the public disease list
 #' 
 #' 'get_public_disease_list' reads the public list from a given CSV file or uses
@@ -226,9 +297,8 @@ get_public_disease_list <- function(filepath, default_diseases) {
     d_list
     
   } else {
-    # If the file doesn't exist, use the list of diseases in the input data
-    warning("File '", filepath, "' not found. Using list from EpiTrax input
-            dataset instead.")
+    # If the file doesn't exist, use the default list of diseases provided
+    warning("File '", filepath, "' not found. Using default list instead.")
     
     default_diseases <- sort(default_diseases)
     
@@ -241,6 +311,60 @@ get_public_disease_list <- function(filepath, default_diseases) {
   }
 }
 
+#' Prepare data for report
+#' 
+#' 'prep_report_data' removes rows from the data that shouldn't appear in the 
+#' report and adds rows for diseases that should be in the report, but weren't 
+#' in the input dataset. Added rows are filled with 0s.
+#' 
+#' @param data Dataframe. Current report data.
+#' @param report_d_list String vector. Diseases to include in the report.
+#' 
+#' @returns Report data with rows for all diseases to report.
+prep_report_data <- function(data, report_d_list) {
+  
+  # - Remove rows from data that aren't going into the public report
+  data <- subset(data, disease %in% report_d_list)
+  
+  # - Get diseases from report list that weren't in the data
+  missing_diseases <- report_d_list[!(report_d_list %in% data$disease)]
+  
+  # If there are any missing diseases, add them
+  if (length(missing_diseases) > 0) {
+    # - Fill the missing diseases in with 0
+    missing_data <- data.frame(
+      disease = missing_diseases
+    )
+    
+    missing_cols <- colnames(data)[2:length(colnames(data))]
+    missing_data[, missing_cols] <- 0.0
+    
+    # - Combine data with missing_data
+    data <- rbind(data, missing_data)
+    
+    # - Sort alphabetically so missing diseases are correctly placed
+    data <- data[order(data$disease),]
+  }
+  
+  data
+}
+
+#' Convert case counts to rate
+#' 
+#' 'convert_counts_to_rate' converts case counts for a given population to an 
+#' adjusted per population of size X and rounds to the given number of digits.
+#' 
+#' @param counts Integer(s). Case counts to convert.
+#' @param pop Integer. Population size where cases were counted.
+#' @param digits Integer. Number of decimals to round to.
+#' @param rate_adj_pop Integer. Optional target population to use for rate. 
+#' Defaults to 100k.
+#' 
+#' @returns The count(s) as rates per rate_adj_pop.
+convert_counts_to_rate <- function(counts, pop, digits, rate_adj_pop = 100000) {
+  round(counts / pop * rate_adj_pop, digits = digits)
+}
+
 #' Create a public report
 #' 
 #' 'create_public_report' creates a public report for the given month.
@@ -250,39 +374,52 @@ get_public_disease_list <- function(filepath, default_diseases) {
 #' @param d_list Dataframe. List of diseases to use for the report.
 #' @param m Integer. The report month.
 #' @param y Integer. The report year.
+#' @param config List. Settings to use for report.
 #' @param r_folder Filepath. Destination folder for the public report.
 #' 
 #' @returns List containing the report name and data.
-create_public_report <- function(cases, avgs, d_list, m, y, r_folder) {
+create_public_report <- function(cases, avgs, d_list, m, y, config, r_folder) {
+  
+  month_name <- month.abb[[m]]
   
   m_counts <- with(cases, cases[year == y & month == m, c("disease", "counts")])
   
   # - Only take the rows with data in the final report
   m_counts <- subset(m_counts, disease %in% avgs$disease)
   
-  # - Create the report data frame initializing the Current_Rate column to 0
+  # - Convert monthly average counts to rate per 100k
+  m_rates <- convert_counts_to_rate(avgs[[month_name]],
+                                    pop = config$county_population,
+                                    digits = config$rounding_decimals)
+  # - Create the report data frame initializing the Rate_per_100k column to 0
   m_report <- data.frame(
     Disease = avgs$disease,
-    Current_Rate = 0, 
-    Historical_Rate = round(avgs[m + 1], digits = 1)
+    Rate_per_100k = 0,
+    Avg_5yr_Rate = m_rates
   )
   
-  # - Update the Current_Rate column with values from m_counts
+  # - Update the Rate_per_100k column with values from m_counts
   for (i in 1:length(m_counts$disease)) {
     d <- m_counts$disease[i]
-    m_report[m_report$Disease == d, ]$Current_Rate <- m_counts$counts[i]
+    rate <- convert_counts_to_rate(m_counts$counts[i],
+                                   pop = config$county_population,
+                                   digits = config$rounding_decimals)
+    m_report[m_report$Disease == d, ]$Rate_per_100k <- rate
   }
   
-  # - Add Trends column
-  m_report$Trend <- mapply(function(x, y) {
-    ifelse(x > y, "↑", ifelse(x < y, "↓", "→"))
-  }, m_report$Current_Rate, m_report[[3]])
-  
-  # - Wait until final step to convert disease names to public-facing versions
+  # - Convert disease names to public-facing versions
   m_report$Disease <- d_list$Public_name
   
+  # - Combine diseases with same public name (if any)
+  m_report <- aggregate(m_report[ , -1], by = list(Disease = m_report$Disease), "sum")
+  
+  # - Add Trends column last
+  m_report$Trend <- mapply(function(x, y) {
+    ifelse(x > y, "↑", ifelse(x < y, "↓", "→"))
+  }, m_report$Rate_per_100k, m_report$Avg_5yr_Rate)
+  
   # - Write to CSV file
-  r_name <- paste0("public_report_", colnames(m_report)[3], report_year)
+  r_name <- paste0("public_report_", month_name, report_year)
   write_report_csv(m_report, paste0(r_name, ".csv"), r_folder)
   
   list("name" = r_name, "report" = m_report)
@@ -292,29 +429,38 @@ create_public_report <- function(cases, avgs, d_list, m, y, r_folder) {
 # Set up file system -----------------------------------------------------------
 input_data_folder <- "input_epitrax_data"
 processed_data_folder <- "processed_epitrax_data"
-internal_reports_folder <- "internal_reports"
-public_reports_folder <- "public_reports"
+internal_folder <- "internal_reports"
+public_folder <- "public_reports"
+settings_folder <- "report_settings"
 
 xl_files <- list() # Internal reports to combine into single .xlsx file
 
 create_filesystem(
   input = input_data_folder,
   processed = processed_data_folder,
-  internal = internal_reports_folder,
-  public = public_reports_folder
+  internal = internal_folder,
+  public = public_folder,
+  settings = settings_folder
 )
 
-clear_old_reports(internal_reports_folder, public_reports_folder)
+clear_old_reports(internal_folder, public_folder)
 
+report_config <- read_report_config(file.path(settings_folder, 
+                                              "report_config.yaml"))
 
 # Read in EpiTrax data ---------------------------------------------------------
-epitrax_data <- read_epitrax_data(input_data_folder)
+epitrax_data <- read_epitrax_data(input_data_folder, processed_folder = NULL)
 epitrax_data_yrs <- sort(unique(epitrax_data$year))
 epitrax_data_diseases <- unique(epitrax_data$disease)
 report_year <- max(epitrax_data_yrs)
 
+diseases <- get_internal_disease_list(
+  file.path(settings_folder, "internal_report_diseases.csv"),
+  default_diseases = epitrax_data_diseases
+)
 
-# Compute annual counts for each disease ---------------------------------------
+
+# Annual counts for each disease -----------------------------------------------
 annual_counts <- aggregate(counts ~ disease + year, 
                            data = epitrax_data, 
                            FUN = sum)
@@ -336,13 +482,15 @@ annual_counts <- with(annual_counts, reshape(
 annual_counts[is.na(annual_counts)] <- 0
 # - Update column names to more human-readable format
 colnames(annual_counts) <- c("disease", epitrax_data_yrs)
+# - Add missing diseases
+annual_counts <- prep_report_data(annual_counts, diseases$EpiTrax_name)
 # - Write to CSV
-write_report_csv(annual_counts, "annual_counts.csv", internal_reports_folder)
+write_report_csv(annual_counts, "annual_counts.csv", internal_folder)
 # - Add to Excel List
 xl_files[["annual_counts"]] <- annual_counts
 
 
-# Compute monthly counts for each year -----------------------------------------
+# Monthly counts for each year -------------------------------------------------
 month_counts <- aggregate(counts ~ disease + year + month, 
                           data = epitrax_data, 
                           FUN = sum)
@@ -357,16 +505,19 @@ for (y in epitrax_data_yrs) {
   # - Reshape data to use months as columns and disease as rows
   m_df <- reshape_monthly_wide(m_df)
   
+  # - Add missing diseases
+  m_df <- prep_report_data(m_df, diseases$EpiTrax_name)
+  
   # - Write to CSV
   fname <- paste0("monthly_counts_", y)
-  write_report_csv(m_df, paste0(fname, ".csv"), internal_reports_folder)
+  write_report_csv(m_df, paste0(fname, ".csv"), internal_folder)
   
   # - Add to Excel List
   xl_files[[fname]] = m_df
 }
 
 
-# Compute monthly averages for all years except current year -------------------
+# Monthly average counts for all years except current year ---------------------
 # - Extract all previous years
 epitrax_data_prev_yrs <- epitrax_data[epitrax_data$year != report_year,]
 num_yrs <- length(unique(epitrax_data_prev_yrs$year))
@@ -376,7 +527,8 @@ monthly_avgs <- aggregate(counts ~ disease + month,
                           data = epitrax_data_prev_yrs, 
                           FUN = sum)
 
-monthly_avgs$counts <- monthly_avgs$counts / num_yrs
+monthly_avgs$counts <- round(monthly_avgs$counts / num_yrs, 
+                             digits = report_config$rounding_decimals)
 
 # - Reshape data to use months as columns and disease as rows
 monthly_avgs <- reshape_monthly_wide(monthly_avgs)
@@ -384,44 +536,25 @@ monthly_avgs <- reshape_monthly_wide(monthly_avgs)
 # - Write to CSV
 avgs_fname <- with(epitrax_data_prev_yrs,
                    paste0("monthly_avgs_", min(year), "-", max(year), ".csv"))
-write_report_csv(monthly_avgs, avgs_fname, internal_reports_folder)
+# - Add missing diseases
+internal_monthly_avgs <- prep_report_data(monthly_avgs, diseases$EpiTrax_name)
+write_report_csv(internal_monthly_avgs, avgs_fname, internal_folder)
 
 # - Add to Excel List
-xl_files[["monthly_avgs"]] <- monthly_avgs
+xl_files[["monthly_avgs"]] <- internal_monthly_avgs
 
-# - Combine internal reports into single .xlsx file
-write_xlsx(xl_files, 
-           file.path(internal_reports_folder, "internal_reports.xlsx"))
+
+# Combine internal reports into single .xlsx file ------------------------------
+write_xlsx(xl_files, file.path(internal_folder, "internal_reports.xlsx"))
 
 
 # Prepare Public Report --------------------------------------------------------
 diseases <- get_public_disease_list(
-  "disease_list_for_public_report.csv",
+  file.path(settings_folder, "public_report_diseases.csv"),
   default_diseases = epitrax_data_diseases
 )
 
-# - Remove rows from monthly_avgs that aren't going into the public report
-monthly_avgs <- subset(monthly_avgs, disease %in% diseases$EpiTrax_name)
-
-# - Get diseases from public report list that weren't in the EpiTrax data
-missing_diseases <- subset(diseases, !(EpiTrax_name %in% monthly_avgs$disease))
-
-# If there are any missing diseases, add them
-if (length(missing_diseases$EpiTrax_name) > 0) {
-  # - Fill the missing diseases in with avg = 0
-  missing_avgs <- data.frame(
-    disease = missing_diseases$EpiTrax_name
-  )
-  
-  missing_cols <- colnames(monthly_avgs)[2:length(colnames(monthly_avgs))]
-  missing_avgs[, missing_cols] <- 0.0
-  
-  # - Combine monthly_avgs with missing_avgs
-  monthly_avgs <- rbind(monthly_avgs, missing_avgs)
-  
-  # - Sort alphabetically so missing diseases are correctly placed
-  monthly_avgs <- monthly_avgs[order(monthly_avgs$disease),]
-}
+monthly_avgs <- prep_report_data(monthly_avgs, diseases$EpiTrax_name)
 
 # - Find the previous month of the report year
 report_month <- max(month_counts[month_counts$year == report_year, ]$month) - 1
@@ -432,33 +565,35 @@ xl_files <- list()
 r <- create_public_report(
   cases = month_counts, 
   avgs = monthly_avgs, 
-  d_list = diseases, 
+  d_list = diseases,
   m = report_month, 
   y = report_year,
-  r_folder = public_reports_folder
+  config = report_config,
+  r_folder = public_folder
 )
 xl_files[[r[["name"]]]] <- r[["report"]]
 
 r <- create_public_report(
   cases = month_counts, 
   avgs = monthly_avgs, 
-  d_list = diseases, 
+  d_list = diseases,
   m = report_month - 1, 
   y = report_year,
-  r_folder = public_reports_folder
+  config = report_config,
+  r_folder = public_folder
 )
 xl_files[[r[["name"]]]] <- r[["report"]]
 
 r <- create_public_report(
   cases = month_counts, 
   avgs = monthly_avgs, 
-  d_list = diseases, 
+  d_list = diseases,
   m = report_month - 2, 
   y = report_year,
-  r_folder = public_reports_folder
+  config = report_config,
+  r_folder = public_folder
 )
 xl_files[[r[["name"]]]] <- r[["report"]]
 
 # - Combine public reports into single .xlsx file
-write_xlsx(xl_files, 
-           file.path(public_reports_folder, "public_reports.xlsx"))
+write_xlsx(xl_files, file.path(public_folder, "public_reports.xlsx"))
