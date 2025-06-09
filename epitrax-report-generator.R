@@ -12,11 +12,12 @@ library(writexl)
 #' @param processed Filepath. Folder where processed input files are moved.
 #' @param internal Filepath. Folder to hold internal reports.
 #' @param public Filepath. Folder to hold public reports.
+#' @param settings Filepath. Folder to hold report settings.
 #' 
 #' @returns NULL.
-create_filesystem <- function(input, processed, internal, public) {
+create_filesystem <- function(input, processed, internal, public, settings) {
   # - Create folders if needed
-  for (f in c(input, processed, internal, public)) {
+  for (f in c(input, processed, internal, public, settings)) {
     if (!dir.exists(f)) {
       dir.create(f)
     }
@@ -280,13 +281,16 @@ create_public_report <- function(cases, avgs, d_list, m, y, r_folder) {
     m_report[m_report$Disease == d, ]$Current_Rate <- m_counts$counts[i]
   }
   
-  # - Add Trends column
+  # - Convert disease names to public-facing versions
+  m_report$Disease <- d_list$Public_name
+  
+  # - Combine diseases with same public name (if any)
+  m_report <- aggregate(m_report[ , -1], by = list(m_report$Disease), "sum")
+  
+  # - Add Trends column last
   m_report$Trend <- mapply(function(x, y) {
     ifelse(x > y, "↑", ifelse(x < y, "↓", "→"))
   }, m_report$Current_Rate, m_report[[3]])
-  
-  # - Wait until final step to convert disease names to public-facing versions
-  m_report$Disease <- d_list$Public_name
   
   # - Write to CSV file
   r_name <- paste0("public_report_", colnames(m_report)[3], report_year)
@@ -301,6 +305,7 @@ input_data_folder <- "input_epitrax_data"
 processed_data_folder <- "processed_epitrax_data"
 internal_folder <- "internal_reports"
 public_folder <- "public_reports"
+settings_folder <- "report_settings"
 
 xl_files <- list() # Internal reports to combine into single .xlsx file
 
@@ -308,7 +313,8 @@ create_filesystem(
   input = input_data_folder,
   processed = processed_data_folder,
   internal = internal_folder,
-  public = public_folder
+  public = public_folder,
+  settings = settings_folder
 )
 
 clear_old_reports(internal_folder, public_folder)
@@ -402,7 +408,7 @@ write_xlsx(xl_files, file.path(internal_folder, "internal_reports.xlsx"))
 
 # Prepare Public Report --------------------------------------------------------
 diseases <- get_public_disease_list(
-  "disease_list_for_public_report.csv",
+  file.path(settings_folder, "disease_list_for_public_report.csv"),
   default_diseases = epitrax_data_diseases
 )
 
@@ -438,7 +444,7 @@ xl_files <- list()
 r <- create_public_report(
   cases = month_counts, 
   avgs = monthly_avgs, 
-  d_list = diseases, 
+  d_list = diseases,
   m = report_month, 
   y = report_year,
   r_folder = public_folder
@@ -448,7 +454,7 @@ xl_files[[r[["name"]]]] <- r[["report"]]
 r <- create_public_report(
   cases = month_counts, 
   avgs = monthly_avgs, 
-  d_list = diseases, 
+  d_list = diseases,
   m = report_month - 1, 
   y = report_year,
   r_folder = public_folder
@@ -458,7 +464,7 @@ xl_files[[r[["name"]]]] <- r[["report"]]
 r <- create_public_report(
   cases = month_counts, 
   avgs = monthly_avgs, 
-  d_list = diseases, 
+  d_list = diseases,
   m = report_month - 2, 
   y = report_year,
   r_folder = public_folder
