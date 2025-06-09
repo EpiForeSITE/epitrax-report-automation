@@ -396,7 +396,7 @@ write_xlsx(xl_files,
 
 # Prepare Public Report --------------------------------------------------------
 diseases <- get_public_disease_list(
-  file.path(public_reports_folder, "disease_list_for_public_report.csv"),
+  "disease_list_for_public_report.csv",
   default_diseases = epitrax_data_diseases
 )
 
