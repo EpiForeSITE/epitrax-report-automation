@@ -94,10 +94,12 @@ validate_data <- function(data) {
   # - Note this also rearranges the columns into the order of expected_cols
   data <- data[expected_cols]
   
+  # Remove rows with missing or NA values
   if (any(is.na(data))) {
-    stop("The EpiTrax dataset contains missing or NA values. Please correct the 
-         data and try again.")
+    warning("The EpiTrax dataset contains missing or NA values which will be 
+            ignored when generating reports.")
   }
+  data <- na.omit(data)
   
   data
 }
@@ -268,7 +270,7 @@ create_public_report <- function(cases, avgs, d_list, m, y, r_folder) {
   # - Create the report data frame initializing the Current_Rate column to 0
   m_report <- data.frame(
     Disease = avgs$disease,
-    Current_Rate = 0, 
+    Current_Rate = 0,
     Historical_Rate = avgs[m + 1]
   )
   
