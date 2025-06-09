@@ -1,6 +1,7 @@
 # Libraries --------------------------------------------------------------------
 library(lubridate)
 library(writexl)
+library(yaml)
 
 # Define Helper Functions ------------------------------------------------------
 
@@ -24,6 +25,30 @@ create_filesystem <- function(input, processed, internal, public, settings) {
   }
 }
 
+#' Read in the report config YAML file
+#' 
+#' 'read_report_config' reads in the config YAML file
+#' 
+#' @param config_filepath Filepath. Path to report config file.
+#' 
+#' @returns a named list with an attribute of 'keys' from the file.
+read_report_config <- function(config_filepath) {
+  config <- read_yaml(config_filepath)
+  
+  if (is.null(config$county_population) || is.null(config$rounding_decimals)) {
+    stop("Report config file missing 'county_population' or 
+         'rounding_decimals'.")
+  }
+  
+  if (class(config$county_population) != "integer" ||
+      class(config$rounding_decimals) != "integer") {
+    stop("'county_population' and 'rounding_decimals' in report config should
+         be integers.")
+  }
+  
+  config
+}
+
 #' Clear out old reports before generating new ones.
 #' 
 #' `clear_old_reports` deletes reports from previous runs and returns a list of 
@@ -36,9 +61,7 @@ create_filesystem <- function(input, processed, internal, public, settings) {
 clear_old_reports <- function(i_folder, p_folder) {
   # - Remove old internal reports
   i_reports <- list(list.files(i_folder, full.names = TRUE))
-  p_reports <- grepl(".xlsx|public_report_", 
-                     list.files(p_folder, full.names = TRUE))
-  p_reports <- list(list.files(p_folder, full.names = TRUE)[p_reports])
+  p_reports <- list(list.files(p_folder, full.names = TRUE))
   
   old_reports <- c(i_reports, p_reports)
   
@@ -327,6 +350,22 @@ prep_report_data <- function(data, report_d_list) {
   data
 }
 
+#' Convert case counts to rate
+#' 
+#' 'convert_counts_to_rate' converts case counts for a given population to an 
+#' adjusted per population of size X and rounds to the given number of digits.
+#' 
+#' @param counts Integer(s). Case counts to convert.
+#' @param pop Integer. Population size where cases were counted.
+#' @param digits Integer. Number of decimals to round to.
+#' @param rate_adj_pop Integer. Optional target population to use for rate. 
+#' Defaults to 100k.
+#' 
+#' @returns The count(s) as rates per rate_adj_pop.
+convert_counts_to_rate <- function(counts, pop, digits, rate_adj_pop = 100000) {
+  round(counts / pop * rate_adj_pop, digits = digits)
+}
+
 #' Create a public report
 #' 
 #' 'create_public_report' creates a public report for the given month.
@@ -336,27 +375,37 @@ prep_report_data <- function(data, report_d_list) {
 #' @param d_list Dataframe. List of diseases to use for the report.
 #' @param m Integer. The report month.
 #' @param y Integer. The report year.
+#' @param config List. Settings to use for report.
 #' @param r_folder Filepath. Destination folder for the public report.
 #' 
 #' @returns List containing the report name and data.
-create_public_report <- function(cases, avgs, d_list, m, y, r_folder) {
+create_public_report <- function(cases, avgs, d_list, m, y, config, r_folder) {
+  
+  month_name <- month.abb[[m]]
   
   m_counts <- with(cases, cases[year == y & month == m, c("disease", "counts")])
   
   # - Only take the rows with data in the final report
   m_counts <- subset(m_counts, disease %in% avgs$disease)
   
-  # - Create the report data frame initializing the Current_Rate column to 0
+  # - Convert monthly average counts to rate per 100k
+  m_rates <- convert_counts_to_rate(avgs[[month_name]],
+                                    pop = config$county_population,
+                                    digits = config$rounding_decimals)
+  # - Create the report data frame initializing the Rate_per_100k column to 0
   m_report <- data.frame(
     Disease = avgs$disease,
-    Current_Rate = 0,
-    Historical_Rate = avgs[m + 1]
+    Rate_per_100k = 0,
+    Avg_5yr_Rate = m_rates
   )
   
-  # - Update the Current_Rate column with values from m_counts
+  # - Update the Rate_per_100k column with values from m_counts
   for (i in 1:length(m_counts$disease)) {
     d <- m_counts$disease[i]
-    m_report[m_report$Disease == d, ]$Current_Rate <- m_counts$counts[i]
+    rate <- convert_counts_to_rate(m_counts$counts[i],
+                                   pop = config$county_population,
+                                   digits = config$rounding_decimals)
+    m_report[m_report$Disease == d, ]$Rate_per_100k <- rate
   }
   
   # - Convert disease names to public-facing versions
@@ -368,10 +417,10 @@ create_public_report <- function(cases, avgs, d_list, m, y, r_folder) {
   # - Add Trends column last
   m_report$Trend <- mapply(function(x, y) {
     ifelse(x > y, "↑", ifelse(x < y, "↓", "→"))
-  }, m_report$Current_Rate, m_report[[3]])
+  }, m_report$Rate_per_100k, m_report$Avg_5yr_Rate)
   
   # - Write to CSV file
-  r_name <- paste0("public_report_", colnames(m_report)[3], report_year)
+  r_name <- paste0("public_report_", month_name, report_year)
   write_report_csv(m_report, paste0(r_name, ".csv"), r_folder)
   
   list("name" = r_name, "report" = m_report)
@@ -397,6 +446,8 @@ create_filesystem(
 
 clear_old_reports(internal_folder, public_folder)
 
+report_config <- read_report_config(file.path(settings_folder, 
+                                              "report_config.yaml"))
 
 # Read in EpiTrax data ---------------------------------------------------------
 epitrax_data <- read_epitrax_data(input_data_folder, processed_folder = NULL)
@@ -477,7 +528,8 @@ monthly_avgs <- aggregate(counts ~ disease + month,
                           data = epitrax_data_prev_yrs, 
                           FUN = sum)
 
-monthly_avgs$counts <- round(monthly_avgs$counts / num_yrs, digits = 2)
+monthly_avgs$counts <- round(monthly_avgs$counts / num_yrs, 
+                             digits = report_config$rounding_decimals)
 
 # - Reshape data to use months as columns and disease as rows
 monthly_avgs <- reshape_monthly_wide(monthly_avgs)
@@ -516,6 +568,7 @@ r <- create_public_report(
   d_list = diseases,
   m = report_month, 
   y = report_year,
+  config = report_config,
   r_folder = public_folder
 )
 xl_files[[r[["name"]]]] <- r[["report"]]
@@ -526,6 +579,7 @@ r <- create_public_report(
   d_list = diseases,
   m = report_month - 1, 
   y = report_year,
+  config = report_config,
   r_folder = public_folder
 )
 xl_files[[r[["name"]]]] <- r[["report"]]
@@ -536,6 +590,7 @@ r <- create_public_report(
   d_list = diseases,
   m = report_month - 2, 
   y = report_year,
+  config = report_config,
   r_folder = public_folder
 )
 xl_files[[r[["name"]]]] <- r[["report"]]
