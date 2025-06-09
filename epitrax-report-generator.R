@@ -461,7 +461,7 @@ diseases <- get_internal_disease_list(
 )
 
 
-# Compute annual counts for each disease ---------------------------------------
+# Annual counts for each disease -----------------------------------------------
 annual_counts <- aggregate(counts ~ disease + year, 
                            data = epitrax_data, 
                            FUN = sum)
@@ -491,7 +491,7 @@ write_report_csv(annual_counts, "annual_counts.csv", internal_folder)
 xl_files[["annual_counts"]] <- annual_counts
 
 
-# Compute monthly counts for each year -----------------------------------------
+# Monthly counts for each year -------------------------------------------------
 month_counts <- aggregate(counts ~ disease + year + month, 
                           data = epitrax_data, 
                           FUN = sum)
@@ -518,7 +518,7 @@ for (y in epitrax_data_yrs) {
 }
 
 
-# Compute monthly averages for all years except current year -------------------
+# Monthly average counts for all years except current year ---------------------
 # - Extract all previous years
 epitrax_data_prev_yrs <- epitrax_data[epitrax_data$year != report_year,]
 num_yrs <- length(unique(epitrax_data_prev_yrs$year))
@@ -544,7 +544,8 @@ write_report_csv(internal_monthly_avgs, avgs_fname, internal_folder)
 # - Add to Excel List
 xl_files[["monthly_avgs"]] <- internal_monthly_avgs
 
-# - Combine internal reports into single .xlsx file
+
+# Combine internal reports into single .xlsx file ------------------------------
 write_xlsx(xl_files, file.path(internal_folder, "internal_reports.xlsx"))
 
 
