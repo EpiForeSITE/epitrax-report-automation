@@ -269,7 +269,7 @@ create_public_report <- function(cases, avgs, d_list, m, y, r_folder) {
   m_report <- data.frame(
     Disease = avgs$disease,
     Current_Rate = 0, 
-    Historical_Rate = round(avgs[m + 1], digits = 1)
+    Historical_Rate = avgs[m + 1]
   )
   
   # - Update the Current_Rate column with values from m_counts
@@ -297,23 +297,23 @@ create_public_report <- function(cases, avgs, d_list, m, y, r_folder) {
 # Set up file system -----------------------------------------------------------
 input_data_folder <- "input_epitrax_data"
 processed_data_folder <- "processed_epitrax_data"
-internal_reports_folder <- "internal_reports"
-public_reports_folder <- "public_reports"
+internal_folder <- "internal_reports"
+public_folder <- "public_reports"
 
 xl_files <- list() # Internal reports to combine into single .xlsx file
 
 create_filesystem(
   input = input_data_folder,
   processed = processed_data_folder,
-  internal = internal_reports_folder,
-  public = public_reports_folder
+  internal = internal_folder,
+  public = public_folder
 )
 
-clear_old_reports(internal_reports_folder, public_reports_folder)
+clear_old_reports(internal_folder, public_folder)
 
 
 # Read in EpiTrax data ---------------------------------------------------------
-epitrax_data <- read_epitrax_data(input_data_folder)
+epitrax_data <- read_epitrax_data(input_data_folder, processed_folder = NULL)
 epitrax_data_yrs <- sort(unique(epitrax_data$year))
 epitrax_data_diseases <- unique(epitrax_data$disease)
 report_year <- max(epitrax_data_yrs)
@@ -342,7 +342,7 @@ annual_counts[is.na(annual_counts)] <- 0
 # - Update column names to more human-readable format
 colnames(annual_counts) <- c("disease", epitrax_data_yrs)
 # - Write to CSV
-write_report_csv(annual_counts, "annual_counts.csv", internal_reports_folder)
+write_report_csv(annual_counts, "annual_counts.csv", internal_folder)
 # - Add to Excel List
 xl_files[["annual_counts"]] <- annual_counts
 
@@ -364,7 +364,7 @@ for (y in epitrax_data_yrs) {
   
   # - Write to CSV
   fname <- paste0("monthly_counts_", y)
-  write_report_csv(m_df, paste0(fname, ".csv"), internal_reports_folder)
+  write_report_csv(m_df, paste0(fname, ".csv"), internal_folder)
   
   # - Add to Excel List
   xl_files[[fname]] = m_df
@@ -381,7 +381,7 @@ monthly_avgs <- aggregate(counts ~ disease + month,
                           data = epitrax_data_prev_yrs, 
                           FUN = sum)
 
-monthly_avgs$counts <- monthly_avgs$counts / num_yrs
+monthly_avgs$counts <- round(monthly_avgs$counts / num_yrs, digits = 2)
 
 # - Reshape data to use months as columns and disease as rows
 monthly_avgs <- reshape_monthly_wide(monthly_avgs)
@@ -389,14 +389,13 @@ monthly_avgs <- reshape_monthly_wide(monthly_avgs)
 # - Write to CSV
 avgs_fname <- with(epitrax_data_prev_yrs,
                    paste0("monthly_avgs_", min(year), "-", max(year), ".csv"))
-write_report_csv(monthly_avgs, avgs_fname, internal_reports_folder)
+write_report_csv(monthly_avgs, avgs_fname, internal_folder)
 
 # - Add to Excel List
 xl_files[["monthly_avgs"]] <- monthly_avgs
 
 # - Combine internal reports into single .xlsx file
-write_xlsx(xl_files, 
-           file.path(internal_reports_folder, "internal_reports.xlsx"))
+write_xlsx(xl_files, file.path(internal_folder, "internal_reports.xlsx"))
 
 
 # Prepare Public Report --------------------------------------------------------
@@ -440,7 +439,7 @@ r <- create_public_report(
   d_list = diseases, 
   m = report_month, 
   y = report_year,
-  r_folder = public_reports_folder
+  r_folder = public_folder
 )
 xl_files[[r[["name"]]]] <- r[["report"]]
 
@@ -450,7 +449,7 @@ r <- create_public_report(
   d_list = diseases, 
   m = report_month - 1, 
   y = report_year,
-  r_folder = public_reports_folder
+  r_folder = public_folder
 )
 xl_files[[r[["name"]]]] <- r[["report"]]
 
@@ -460,10 +459,9 @@ r <- create_public_report(
   d_list = diseases, 
   m = report_month - 2, 
   y = report_year,
-  r_folder = public_reports_folder
+  r_folder = public_folder
 )
 xl_files[[r[["name"]]]] <- r[["report"]]
 
 # - Combine public reports into single .xlsx file
-write_xlsx(xl_files, 
-           file.path(public_reports_folder, "public_reports.xlsx"))
+write_xlsx(xl_files, file.path(public_folder, "public_reports.xlsx"))
