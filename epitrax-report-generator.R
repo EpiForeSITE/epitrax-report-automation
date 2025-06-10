@@ -413,6 +413,9 @@ create_public_report <- function(cases, avgs, d_list, m, y, config, r_folder) {
   }
   
   # - Convert disease names to public-facing versions
+  m_report <- m_report[order(m_report$Disease),]
+  d_list <- d_list[order(d_list$EpiTrax_name),]
+  
   m_report$Disease <- d_list$Public_name
 
   # - Combine diseases with same public name (if any)
