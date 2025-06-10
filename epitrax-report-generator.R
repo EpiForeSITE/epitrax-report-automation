@@ -548,6 +548,36 @@ write_report_csv(internal_monthly_avgs, avgs_fname, internal_folder)
 xl_files[["monthly_avgs"]] <- internal_monthly_avgs
 
 
+# YTD report for current month -------------------------------------------------
+current_ytd <- month_counts[month_counts$year == report_year, ]
+ytd_month <- max(current_ytd$month)
+
+current_ytd <- aggregate(counts ~ disease, data = current_counts, FUN = sum)
+current_ytd <- prep_report_data(current_ytd, diseases$EpiTrax_name)
+
+avg_5yr_ytd <- with(month_counts, month_counts[year != report_year & 
+                                                 month <= ytd_month, ])
+avg_5yr_ytd <- aggregate(counts ~ disease, data = avg_5yr_ytd, FUN = sum)
+avg_5yr_ytd <- prep_report_data(avg_5yr_ytd, diseases$EpiTrax_name)
+
+ytd_report <- data.frame(
+  Disease = current_ytd$disease,
+  Current_YTD_Rate = convert_counts_to_rate(
+    current_ytd$counts,
+    pop = report_config$current_population,
+    digits = report_config$rounding_decimals),
+  Avg_5yr_YTD_Rate = convert_counts_to_rate(
+    avg_5yr_ytd$counts,
+    pop = report_config$current_population,
+    digits = report_config$rounding_decimals)
+)
+
+# - Write to CSV
+write_report_csv(ytd_report, "ytd_report.csv", internal_folder)
+
+# - Add to Excel List
+xl_files[["ytd_report"]] <- ytd_report
+
 # Combine internal reports into single .xlsx file ------------------------------
 write_xlsx(xl_files, file.path(internal_folder, "internal_reports.xlsx"))
 
