@@ -449,7 +449,8 @@ report_config <- read_report_config(file.path(settings_folder,
                                               "report_config.yaml"))
 
 # Read in EpiTrax data ---------------------------------------------------------
-epitrax_data <- read_epitrax_data(input_data_folder, processed_folder = NULL)
+epitrax_data <- read_epitrax_data(input_data_folder, 
+                                  processed_folder = processed_data_folder)
 epitrax_data_yrs <- sort(unique(epitrax_data$year))
 epitrax_data_diseases <- unique(epitrax_data$disease)
 report_year <- max(epitrax_data_yrs)
