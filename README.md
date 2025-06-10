@@ -21,37 +21,18 @@ install.packages(c("lubridate", "writexl", "yaml"))
 
 ## Usage
 
-The program requires certain folders and files to execute properly:
-- Folders:
-  - `input_epitrax_data/`
-  - `report_settings/`
-  - `internal_reports/`
-  - `public_reports/`
-  - `processed_epitrax_data/`
-- Files:
-  - Input EpiTrax CSV data file (required)
-  - `internal_report_diseases.csv` (optional)
-  - `public_report_diseases.csv` (optional)
-  - `report_config.yaml` (optional)
-
-These files and folders are described below.
-
-The very first time you run the program, it will create these folders (if they don't already exist) in the same directory where you've stored the R script (e.g., the Project Folder from Installation Step 3). It will then fail with an error message because there is no input file to use for report generation. After you provide an input file (as described below), you will be able to execute the program properly.
-
-Thus, the very first time you run the program, you will need to run it twice---once to setup the folders and a second time to generate your first batch of reports. After that, you'll only run it once with new input data.
-
 ### Executing the Script
 In RStudio, "Run" is used to execute a *portion* of code from an R file. To execute the *entire* script, we use "Source" in one of two ways:
 1. Click "Source" in the corner of the top left pane (where the `epitrax-report-generator.R` code is displayed)
 2. Go to "Code" > "Source".
 
-Again, the first time you source `epitrax-report-generator.R`, you will see an error in the "Console" tab describing a missing input file. The script has created the right folders, but you need to populate them with your files. Then source `epitrax-report-generator.R` again.
+When you run the program, it will ask you for an input file to use for report generation. Find your EpiTrax CSV data file and select it. The program will then generate reports based on the data in that file.
 
-### Add Input File
-Place the EpiTrax data file from which you would like to generate reports in the `input_epitrax_data/` folder.
-- **NOTE:** There can only be 1 input file in this folder when the program runs or it will return an error. 
+**Note:** The very first time you run the program, it will create three folders in the same directory where you're running the R script (e.g., the Project Folder from Installation Step 3). These folders are:
+- `report_settings/`: Holds settings files for report generation.
+- `internal_reports/`: Holds reports intended for internal use by the health department.
+- `public_reports/`: Holds reports intended for public use.
 
-After executing the program, the input data file will be moved to the `processed_epitrax_data/` folder. This is to give you confirmation that the data was processed. It also ensures that the next time you run the program, you don't have first to move the old input file out of the input folder.
 
 ### Add Report Settings Files
 In the `report_settings/` folder, you may add three **OPTIONAL** files:

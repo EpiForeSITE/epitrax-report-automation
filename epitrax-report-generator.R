@@ -9,16 +9,14 @@ library(yaml)
 #' 
 #' `create_filesystem` creates the given folders if they don't already exist.
 #' 
-#' @param input Filepath. Folder where input file will be placed.
-#' @param processed Filepath. Folder where processed input files are moved.
 #' @param internal Filepath. Folder to hold internal reports.
 #' @param public Filepath. Folder to hold public reports.
 #' @param settings Filepath. Folder to hold report settings.
 #' 
 #' @returns NULL.
-create_filesystem <- function(input, processed, internal, public, settings) {
+create_filesystem <- function(internal, public, settings) {
   # - Create folders if needed
-  for (f in c(input, processed, internal, public, settings)) {
+  for (f in c(internal, public, settings)) {
     if (!dir.exists(f)) {
       dir.create(f)
     }
@@ -185,28 +183,14 @@ format_week_num <- function(data) {
 #' 'read_epitrax_data' reads EpiTrax data from a CSV, validates and formats it,
 #' then returns the data.
 #' 
-#' @param input_folder Filepath. Folder containing input data.
-#' @param processed_folder Filepath. Optional folder to move the processed data
-#' 
 #' @returns The validated and formatted EpiTrax data from the input file.
-read_epitrax_data <- function(input_folder, processed_folder = NULL) {
-  # Get file name from input data folder
-  fname <- list.files(input_folder)
+read_epitrax_data <- function() {
   
-  if (length(fname) == 0) {
-    stop("No input file provided in '", input_folder, "' folder.")
-  }
+  # Have user choose a file
+  fpath <- file.choose()
   
-  # Check for only 1 file
-  if (length(fname) > 1) {
-    stop("Please include only 1 file in the '", input_folder, "' folder.")
-  }
-  
-  # Check file has correct extension
-  fpath <- file.path(input_folder, fname)
   if (!file.exists(fpath) || !grepl("\\.csv$", fpath)) {
-    stop("Please add an EpiTrax data file (.csv) to the '", input_folder, 
-         "' folder")
+    stop("Please select an EpiTrax data file (.csv).")
   }
   
   # Read data from file
@@ -215,11 +199,6 @@ read_epitrax_data <- function(input_folder, processed_folder = NULL) {
   # Validate and format data
   input_data <- validate_data(input_data)
   input_data <- format_week_num(input_data)
-  
-  # Move processed input file to processed_folder (if provided)
-  if (!is.null(processed_folder)) {
-    file.rename(fpath, file.path(processed_folder, fname))
-  }
   
   # Return data from file
   input_data
@@ -435,7 +414,7 @@ create_public_report <- function(cases, avgs, d_list, m, y, config, r_folder) {
   
   # - Convert disease names to public-facing versions
   m_report$Disease <- d_list$Public_name
-  
+
   # - Combine diseases with same public name (if any)
   m_report <- aggregate(m_report[ , -1], by = list(Disease = m_report$Disease), "sum")
   
@@ -453,8 +432,6 @@ create_public_report <- function(cases, avgs, d_list, m, y, config, r_folder) {
 
 
 # Set up file system -----------------------------------------------------------
-input_data_folder <- "input_epitrax_data"
-processed_data_folder <- "processed_epitrax_data"
 internal_folder <- "internal_reports"
 public_folder <- "public_reports"
 settings_folder <- "report_settings"
@@ -462,8 +439,6 @@ settings_folder <- "report_settings"
 xl_files <- list() # Internal reports to combine into single .xlsx file
 
 create_filesystem(
-  input = input_data_folder,
-  processed = processed_data_folder,
   internal = internal_folder,
   public = public_folder,
   settings = settings_folder
@@ -475,8 +450,7 @@ report_config <- read_report_config(file.path(settings_folder,
                                               "report_config.yaml"))
 
 # Read in EpiTrax data ---------------------------------------------------------
-epitrax_data <- read_epitrax_data(input_data_folder, 
-                                  processed_folder = processed_data_folder)
+epitrax_data <- read_epitrax_data()
 epitrax_data_yrs <- sort(unique(epitrax_data$year))
 epitrax_data_diseases <- unique(epitrax_data$disease)
 report_year <- max(epitrax_data_yrs)
