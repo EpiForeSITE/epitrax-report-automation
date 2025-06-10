@@ -33,20 +33,36 @@ create_filesystem <- function(input, processed, internal, public, settings) {
 #' 
 #' @returns a named list with an attribute of 'keys' from the file.
 read_report_config <- function(config_filepath) {
-  config <- read_yaml(config_filepath)
   
-  if (is.null(config$county_population) || is.null(config$rounding_decimals)) {
-    stop("Report config file missing 'county_population' or 
-         'rounding_decimals'.")
+  if (file.exists(config_filepath)) {
+    config <- read_yaml(config_filepath) 
+    
+    # - Validate or set defaults
+    if (is.null(config$county_population) || 
+        class(config$county_population) != "integer") {
+      warning("In '", config_filepath, "', 'county_population' is missing or 
+            invalid. Using default value of 100,000 instead.")
+      config$county_population <- 100000
+    }
+    
+    if (is.null(config$rounding_decimals) || 
+        class(config$rounding_decimals) != "integer") {
+      warning("In '", config_filepath, "', 'rounding_decimals' is missing or 
+            invalid. Using default value of 2 instead.")
+      config$rounding_decimals <- 2
+    }
+    
+    config
+  } else {
+    
+    warning("No report configuration file provided. Using default values:
+            'county_population' = 100000
+            'rounding_decimals' = 2")
+    
+    config <- list(county_population = 100000, rounding_decimals = 2)
+    
+    config
   }
-  
-  if (class(config$county_population) != "integer" ||
-      class(config$rounding_decimals) != "integer") {
-    stop("'county_population' and 'rounding_decimals' in report config should
-         be integers.")
-  }
-  
-  config
 }
 
 #' Clear out old reports before generating new ones.
@@ -168,7 +184,7 @@ read_epitrax_data <- function(input_folder, processed_folder = NULL) {
   fname <- list.files(input_folder)
   
   if (length(fname) == 0) {
-    stop("No input file provided.")
+    stop("No input file provided in '", input_folder, "' folder.")
   }
   
   # Check for only 1 file
@@ -449,7 +465,8 @@ report_config <- read_report_config(file.path(settings_folder,
                                               "report_config.yaml"))
 
 # Read in EpiTrax data ---------------------------------------------------------
-epitrax_data <- read_epitrax_data(input_data_folder, processed_folder = NULL)
+epitrax_data <- read_epitrax_data(input_data_folder, 
+                                  processed_folder = processed_data_folder)
 epitrax_data_yrs <- sort(unique(epitrax_data$year))
 epitrax_data_diseases <- unique(epitrax_data$disease)
 report_year <- max(epitrax_data_yrs)
