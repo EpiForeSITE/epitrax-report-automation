@@ -38,11 +38,18 @@ read_report_config <- function(config_filepath) {
     config <- read_yaml(config_filepath) 
     
     # - Validate or set defaults
-    if (is.null(config$county_population) || 
-        class(config$county_population) != "integer") {
-      warning("In '", config_filepath, "', 'county_population' is missing or 
+    if (is.null(config$current_population) || 
+        class(config$current_population) != "integer") {
+      warning("In '", config_filepath, "', 'current_population' is missing or 
             invalid. Using default value of 100,000 instead.")
-      config$county_population <- 100000
+      config$current_population <- 100000
+    }
+    
+    if (is.null(config$avg_5yr_population) || 
+        class(config$avg_5yr_population) != "integer") {
+      warning("In '", config_filepath, "', 'avg_5yr_population' is missing or 
+            invalid. Using default value of 'current_population' instead.")
+      config$avg_5yr_population <- config$current_population
     }
     
     if (is.null(config$rounding_decimals) || 
@@ -56,10 +63,13 @@ read_report_config <- function(config_filepath) {
   } else {
     
     warning("No report configuration file provided. Using default values:
-            'county_population' = 100000
+            'current_population' = 100,000
+            'avg_5yr_population' = 100,000
             'rounding_decimals' = 2")
     
-    config <- list(county_population = 100000, rounding_decimals = 2)
+    config <- list(current_population = 100000, 
+                   avg_5yr_population = 100000,
+                   rounding_decimals = 2)
     
     config
   }
@@ -405,7 +415,7 @@ create_public_report <- function(cases, avgs, d_list, m, y, config, r_folder) {
   
   # - Convert monthly average counts to rate per 100k
   m_rates <- convert_counts_to_rate(avgs[[month_name]],
-                                    pop = config$county_population,
+                                    pop = config$avg_5yr_population,
                                     digits = config$rounding_decimals)
   # - Create the report data frame initializing the Rate_per_100k column to 0
   m_report <- data.frame(
@@ -418,7 +428,7 @@ create_public_report <- function(cases, avgs, d_list, m, y, config, r_folder) {
   for (i in 1:length(m_counts$disease)) {
     d <- m_counts$disease[i]
     rate <- convert_counts_to_rate(m_counts$counts[i],
-                                   pop = config$county_population,
+                                   pop = config$current_population,
                                    digits = config$rounding_decimals)
     m_report[m_report$Disease == d, ]$Rate_per_100k <- rate
   }

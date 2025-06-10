@@ -66,8 +66,12 @@ In the `report_settings/` folder, you may add three **OPTIONAL** files:
       - `Public_name`: How each disease should be named in the report. For example, converting "Chlamydia trachomatis infection" to "Chlamydia".
       - **NOTE:** If multiple diseases have the same `Public_name` their report entries will be combined. For example, to combine "Syphilis, primary" and "Syphilis, secondary" into "Syphilis", simply set the `Public_name` of both diseases to "Syphilis".
 3. `report_config.yaml`: Provides additional configuration information, such as:
-    - `county_population`: Local population to use for converting case counts to Rates per 100k (defaults to 100k, if not provided)
-    - `rounding_decimals`: How many digits to round the decimals to (defaults to 2, if not provided)
+    - `current_population`: Population to use for converting case counts for the **current year** to Rates per 100k
+      - If not provided, defaults to 100k.
+    - `avg_5yr_population`: Population to use for converting case counts for the **5yr historical average** to Rates per 100k
+      - If not provided, defaults to `current_population`.
+    - `rounding_decimals`: How many digits to round decimals
+      - If not provided, defaults to 2.
 
 ### Important Things to Keep in Mind
 
