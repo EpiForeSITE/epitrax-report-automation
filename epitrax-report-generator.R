@@ -558,6 +558,7 @@ current_ytd <- prep_report_data(current_ytd, diseases$EpiTrax_name)
 avg_5yr_ytd <- with(month_counts, month_counts[year != report_year & 
                                                  month <= ytd_month, ])
 avg_5yr_ytd <- aggregate(counts ~ disease, data = avg_5yr_ytd, FUN = sum)
+avg_5yr_ytd$counts <- avg_5yr_ytd$counts / num_yrs
 avg_5yr_ytd <- prep_report_data(avg_5yr_ytd, diseases$EpiTrax_name)
 
 ytd_report <- data.frame(
