@@ -1,19 +1,18 @@
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # title: EpiTrax Report Generator
 # author: Andrew Pulsipher
 # date: 2025-06-11
 # 
 # This script generates monthly and YTD reports from EpiTrax data.
 # It reads in EpiTrax data, processes it, and generates reports in both internal
-# and public formats. It is intended to be run in RStudio.
+# and public formats.
 #
-# The script is maitained by the InsigheNet center ForeSITE. All the code is
+# The script is maintained by the Insight Net center ForeSITE. All the code is
 # available on GitHub at
 # https://github.com/EpiForeSITE/epitrax-report-automation.
 # 
-# If you have any questions, would like to get the latest version, or found
-# a bug, please go to the GitHub repository. 
-# -----------------------------------------------------------------------------
+# For questions, updates, or bug reports, please visit the GitHub repository. 
+# ------------------------------------------------------------------------------
 
 # Libraries --------------------------------------------------------------------
 library(lubridate)
@@ -302,7 +301,14 @@ get_internal_disease_list <- function(filepath, default_diseases) {
     
   } else {
     # If the file doesn't exist, use the default list of diseases provided
-    warning("File '", filepath, "' not found. Using default list instead.")
+    warning("You have not provided a disease list for internal reports.",
+            "\n - The program will default to using only the diseases ",
+            "found in the input dataset.",
+            "\n - If you would like to use a different list, ",
+            "please include a file named \n\n\t'",
+            filepath, 
+            "'\n\n - The file must have a column named",
+            "\n\n\t'EpiTrax_name'")
     
     default_diseases <- sort(default_diseases)
     
@@ -343,7 +349,14 @@ get_public_disease_list <- function(filepath, default_diseases) {
     
   } else {
     # If the file doesn't exist, use the default list of diseases provided
-    warning("File '", filepath, "' not found. Using default list instead.")
+    warning("You have not provided a disease list for public reports.",
+            "\n - The program will default to using only the diseases ",
+            "found in the input dataset.",
+            "\n - If you would like to use a different list, ",
+            "please include a file named \n\n\t'",
+            filepath, 
+            "'\n\n - The file must have columns named",
+            "\n\n\t'EpiTrax_name' and 'Public_name'")
     
     default_diseases <- sort(default_diseases)
     
