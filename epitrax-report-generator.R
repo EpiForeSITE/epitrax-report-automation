@@ -552,7 +552,7 @@ xl_files[["monthly_avgs"]] <- internal_monthly_avgs
 current_ytd <- month_counts[month_counts$year == report_year, ]
 ytd_month <- max(current_ytd$month)
 
-current_ytd <- aggregate(counts ~ disease, data = current_counts, FUN = sum)
+current_ytd <- aggregate(counts ~ disease, data = current_ytd, FUN = sum)
 current_ytd <- prep_report_data(current_ytd, diseases$EpiTrax_name)
 
 avg_5yr_ytd <- with(month_counts, month_counts[year != report_year & 
@@ -568,7 +568,7 @@ ytd_report <- data.frame(
     digits = report_config$rounding_decimals),
   Avg_5yr_YTD_Rate = convert_counts_to_rate(
     avg_5yr_ytd$counts,
-    pop = report_config$current_population,
+    pop = report_config$avg_5yr_population,
     digits = report_config$rounding_decimals)
 )
 
