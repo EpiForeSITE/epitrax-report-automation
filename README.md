@@ -21,6 +21,18 @@ install.packages(c("lubridate", "writexl", "yaml"))
 
 ## Usage
 
+### Input Data
+The program expects an input file in CSV format that contains EpiTrax data with the following columns:
+- `patient_mmwr_week` (integer)
+- `patient_mmwr_year` (integer)
+- `patient_disease` (character)
+
+For example:
+```csv
+"patient_mmwr_week","patient_mmwr_year","patient_disease"
+"26","2020","Chlamydia trachomatis infection"
+```
+
 ### Executing the Script
 In RStudio, "Run" is used to execute a *portion* of code from an R file. To execute the *entire* script, we use "Source" in one of two ways:
 1. Click "Source" in the corner of the top left pane (where the `epitrax-report-generator.R` code is displayed)

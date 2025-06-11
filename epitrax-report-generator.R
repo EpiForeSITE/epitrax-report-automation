@@ -1,3 +1,20 @@
+# -----------------------------------------------------------------------------
+# title: EpiTrax Report Generator
+# author: Andrew Pulsipher
+# date: 2025-06-11
+# 
+# This script generates monthly and YTD reports from EpiTrax data.
+# It reads in EpiTrax data, processes it, and generates reports in both internal
+# and public formats. It is intended to be run in RStudio.
+#
+# The script is maitained by the InsigheNet center ForeSITE. All the code is
+# available on GitHub at
+# https://github.com/EpiForeSITE/epitrax-report-automation.
+# 
+# If you have any questions, would like to get the latest version, or found
+# a bug, please go to the GitHub repository. 
+# -----------------------------------------------------------------------------
+
 # Libraries --------------------------------------------------------------------
 library(lubridate)
 library(writexl)
@@ -117,35 +134,58 @@ write_report_csv <- function(data, filename, folder) {
 #' 
 #' @returns The validated data with all unneeded columns removed.
 validate_data <- function(data) {
+
   # Check column names
-  expected_cols <- c("patient_mmwr_year", "patient_mmwr_week", "patient_disease")
+  expected_cols <- c(
+    integer = "patient_mmwr_year",
+    integer = "patient_mmwr_week",
+    character = "patient_disease"
+    )
+
   actual_cols <- colnames(data)
   
   if (!all(expected_cols %in% actual_cols)) {
-    stop("The EpiTrax data is missing one of the following fields:\n\n\t",
-         paste(expected_cols, collapse=", "), 
-         "\n\nPlease add the missing fields to the file and try again.")
-  }
-  # Check column data types
-  if (class(data$patient_mmwr_week) != "integer" ||
-      class(data$patient_mmwr_year) != "integer" ||
-      class(data$patient_disease) != "character") {
-    stop("One or more columns in the EpiTrax dataset has an incorrect 
-         data type:\n\n",
-         "\t'patient_mmwr_week' should be of type 'integer'\n",
-         "\t'patient_mmwr_year' should be of type 'integer'\n",
-         "\t'patient_disease' should be of type 'character'\n",
-         "\nPlease try again with a valid dataset."
+    stop(
+      "The EpiTrax data is missing one of the following fields:\n\n\t'",
+      paste(expected_cols, collapse="', '"), 
+      "'",
+      "\n\nThe following fields were found:\n\n\t'",
+      paste(actual_cols, collapse="', '"),
+      "'",
+      "\n\nPlease add the missing fields to the file and try again."
     )
   }
+  
+  # Check column data types
+  test_tmp <- Map(\(col, cls) {
+    class(data[[col]]) != cls
+  }, col = expected_cols, cls = names(expected_cols)) |> unlist()
+  
+  if (any(test_tmp)) {
+    stop(
+      "One or more columns in the EpiTrax dataset has an incorrect data type:",
+      "\n\n",
+      paste0(
+        "\t- '",
+        expected_cols[test_tmp], "' should be of type '", 
+        names(expected_cols)[test_tmp],
+        "' but it is of type '",
+        sapply(data[expected_cols[test_tmp]], class),
+        "'",
+        collapse = "\n\t"
+        ),
+      "\n\nPlease try again with a valid dataset."
+    )
+  }
+  
   # Remove all columns we're not using
   # - Note this also rearranges the columns into the order of expected_cols
   data <- data[expected_cols]
   
   # Remove rows with missing or NA values
   if (any(is.na(data))) {
-    warning("The EpiTrax dataset contains missing or NA values which will be 
-            ignored when generating reports.")
+    warning("The EpiTrax dataset contains missing or NA values which will be ", 
+            "ignored when generating reports.")
   }
   data <- na.omit(data)
   
@@ -295,8 +335,8 @@ get_public_disease_list <- function(filepath, default_diseases) {
     
     # Validate file
     if (is.null(d_list$EpiTrax_name) || is.null(d_list$Public_name)) {
-      stop("File '", filepath, "' is incorrectly formatted. Please use the 
-           column names: 'EpiTrax_name' and 'Public_name'.")
+      stop("File '", filepath, "' is incorrectly formatted. Please use the ", 
+           "column names: 'EpiTrax_name' and 'Public_name'.")
     }
     
     d_list
@@ -370,9 +410,24 @@ convert_counts_to_rate <- function(counts, pop, digits, rate_adj_pop = 100000) {
   round(counts / pop * rate_adj_pop, digits = digits)
 }
 
-#' Create a public report
+#' Get Trend column of report
 #' 
-#' 'create_public_report' creates a public report for the given month.
+#' 'get_trend' compares values of two columns and produces a new column 
+#' containing the trend result.
+#' 
+#' @param col1 List. Current data.
+#' @param col2 List. Historical comparison data.
+#' 
+#' @returns Column containing the Trend markers.
+get_trend <- function(col1, col2) {
+  mapply(function(x, y) {
+    ifelse(x > y, "↑", ifelse(x < y, "↓", "→"))
+  }, col1, col2)
+}
+
+#' Create a monthly cross-section public report
+#' 
+#' 'create_public_report_month' creates a public report for the given month.
 #' 
 #' @param cases Dataframe. Disease case counts for each month and year.
 #' @param avgs Dataframe. Disease case count averages for each month.
@@ -383,7 +438,7 @@ convert_counts_to_rate <- function(counts, pop, digits, rate_adj_pop = 100000) {
 #' @param r_folder Filepath. Destination folder for the public report.
 #' 
 #' @returns List containing the report name and data.
-create_public_report <- function(cases, avgs, d_list, m, y, config, r_folder) {
+create_public_report_month <- function(cases, avgs, d_list, m, y, config, r_folder) {
   
   month_name <- month.abb[[m]]
   
@@ -413,21 +468,58 @@ create_public_report <- function(cases, avgs, d_list, m, y, config, r_folder) {
   }
   
   # - Convert disease names to public-facing versions
+  m_report <- merge(m_report, d_list, 
+                    by.x = "Disease", by.y = "EpiTrax_name", 
+                    all.x = TRUE, all.y = FALSE)
+  m_report$Disease <- m_report$Public_name
+  m_report$Public_name <- NULL
   m_report <- m_report[order(m_report$Disease),]
-  d_list <- d_list[order(d_list$EpiTrax_name),]
-  
-  m_report$Disease <- d_list$Public_name
 
   # - Combine diseases with same public name (if any)
   m_report <- aggregate(m_report[ , -1], by = list(Disease = m_report$Disease), "sum")
   
   # - Add Trends column last
-  m_report$Trend <- mapply(function(x, y) {
-    ifelse(x > y, "↑", ifelse(x < y, "↓", "→"))
-  }, m_report$Rate_per_100k, m_report$Avg_5yr_Rate)
+  m_report$Trend <- get_trend(m_report$Rate_per_100k, m_report$Avg_5yr_Rate)
   
   # - Write to CSV file
   r_name <- paste0("public_report_", month_name, report_year)
+  write_report_csv(m_report, paste0(r_name, ".csv"), r_folder)
+  
+  list("name" = r_name, "report" = m_report)
+}
+
+#' Create a YTD public report
+#' 
+#' 'create_public_report_ytd' creates a public report for YTD rates.
+#' 
+#' @param ytd_rates Dataframe. YTD case rates per 100k.
+#' @param d_list Dataframe. List of diseases to use for the report.
+#' @param r_folder Filepath. Destination folder for the public report.
+#' 
+#' @returns List containing the report name and data.
+create_public_report_ytd <- function(ytd_rates, d_list, r_folder) {
+  
+  # - Create the report data frame initializing the Rate_per_100k column to 0
+  m_report <- data.frame(
+    Disease = ytd_rates$disease,
+    YTD_Rate_per_100k = ytd_rates$Current_YTD_Rate_per_100k,
+    Avg_5yr_Rate = ytd_rates$Avg_5yr_YTD_Rate_per_100k
+  )
+  
+  # - Convert disease names to public-facing versions
+  m_report <- merge(m_report, d_list, by.x = "Disease", by.y = "EpiTrax_name")
+  m_report$Disease <- m_report$Public_name
+  m_report$Public_name <- NULL
+  m_report <- m_report[order(m_report$Disease),]
+  
+  # - Combine diseases with same public name (if any)
+  m_report <- aggregate(m_report[ , -1], by = list(Disease = m_report$Disease), "sum")
+  
+  # - Add Trends column last
+  m_report$Trend <- get_trend(m_report$YTD_Rate_per_100k, m_report$Avg_5yr_Rate)
+  
+  # - Write to CSV file
+  r_name <- "public_report_YTD"
   write_report_csv(m_report, paste0(r_name, ".csv"), r_folder)
   
   list("name" = r_name, "report" = m_report)
@@ -548,11 +640,53 @@ write_report_csv(internal_monthly_avgs, avgs_fname, internal_folder)
 xl_files[["monthly_avgs"]] <- internal_monthly_avgs
 
 
+# YTD reports for current month ------------------------------------------------
+current_ytd <- month_counts[month_counts$year == report_year, ]
+ytd_month <- max(current_ytd$month)
+
+current_ytd <- aggregate(counts ~ disease, data = current_ytd, FUN = sum)
+current_ytd <- prep_report_data(current_ytd, diseases$EpiTrax_name)
+
+avg_5yr_ytd <- with(month_counts, month_counts[year != report_year & 
+                                                 month <= ytd_month, ])
+avg_5yr_ytd <- aggregate(counts ~ disease, data = avg_5yr_ytd, FUN = sum)
+avg_5yr_ytd$counts <- avg_5yr_ytd$counts / num_yrs
+avg_5yr_ytd <- prep_report_data(avg_5yr_ytd, diseases$EpiTrax_name)
+
+ytd_report_counts <- data.frame(
+  disease = current_ytd$disease,
+  Current_YTD_Counts = current_ytd$counts,
+  Avg_5yr_YTD_Counts = avg_5yr_ytd$counts
+)
+
+ytd_report_rates <- data.frame(
+  disease = current_ytd$disease,
+  Current_YTD_Rate_per_100k = convert_counts_to_rate(
+    current_ytd$counts,
+    pop = report_config$current_population,
+    digits = report_config$rounding_decimals),
+  Avg_5yr_YTD_Rate_per_100k = convert_counts_to_rate(
+    avg_5yr_ytd$counts,
+    pop = report_config$avg_5yr_population,
+    digits = report_config$rounding_decimals)
+)
+
+# - Write to CSV
+write_report_csv(ytd_report_counts, "ytd_report_counts.csv", internal_folder)
+write_report_csv(ytd_report_rates, "ytd_report_rates.csv", internal_folder)
+
+# - Add to Excel List
+xl_files[["ytd_report_counts"]] <- ytd_report_counts
+xl_files[["ytd_report_rates"]] <- ytd_report_rates
+
 # Combine internal reports into single .xlsx file ------------------------------
-write_xlsx(xl_files, file.path(internal_folder, "internal_reports.xlsx"))
+write_xlsx(xl_files, file.path(internal_folder, 
+                               "internal_reports_combined.xlsx"))
 
 
-# Prepare Public Report --------------------------------------------------------
+# Prepare Public Reports -------------------------------------------------------
+xl_files <- list()
+
 diseases <- get_public_disease_list(
   file.path(settings_folder, "public_report_diseases.csv"),
   default_diseases = epitrax_data_diseases
@@ -563,10 +697,8 @@ monthly_avgs <- prep_report_data(monthly_avgs, diseases$EpiTrax_name)
 # - Find the previous month of the report year
 report_month <- max(month_counts[month_counts$year == report_year, ]$month) - 1
 
-# - Create report table for most recent month and for 1 and 2 months prior
-xl_files <- list()
-
-r <- create_public_report(
+# - Create monthly cross-section report for most recent 3 months
+r <- create_public_report_month(
   cases = month_counts, 
   avgs = monthly_avgs, 
   d_list = diseases,
@@ -577,7 +709,7 @@ r <- create_public_report(
 )
 xl_files[[r[["name"]]]] <- r[["report"]]
 
-r <- create_public_report(
+r <- create_public_report_month(
   cases = month_counts, 
   avgs = monthly_avgs, 
   d_list = diseases,
@@ -588,7 +720,7 @@ r <- create_public_report(
 )
 xl_files[[r[["name"]]]] <- r[["report"]]
 
-r <- create_public_report(
+r <- create_public_report_month(
   cases = month_counts, 
   avgs = monthly_avgs, 
   d_list = diseases,
@@ -599,5 +731,15 @@ r <- create_public_report(
 )
 xl_files[[r[["name"]]]] <- r[["report"]]
 
+# - Create current YTD report
+ytd_report_rates <- prep_report_data(ytd_report_rates, diseases$EpiTrax_name)
+
+r <- create_public_report_ytd(
+  ytd_rates <- ytd_report_rates,
+  d_list = diseases,
+  r_folder = public_folder
+)
+xl_files[[r[["name"]]]] <- r[["report"]]
+
 # - Combine public reports into single .xlsx file
-write_xlsx(xl_files, file.path(public_folder, "public_reports.xlsx"))
+write_xlsx(xl_files, file.path(public_folder, "public_reports_combined.xlsx"))
