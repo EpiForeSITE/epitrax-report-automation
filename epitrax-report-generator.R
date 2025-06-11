@@ -640,7 +640,8 @@ xl_files[["ytd_report_counts"]] <- ytd_report_counts
 xl_files[["ytd_report_rates"]] <- ytd_report_rates
 
 # Combine internal reports into single .xlsx file ------------------------------
-write_xlsx(xl_files, file.path(internal_folder, "internal_reports.xlsx"))
+write_xlsx(xl_files, file.path(internal_folder, 
+                               "internal_reports_combined.xlsx"))
 
 
 # Prepare Public Reports -------------------------------------------------------
@@ -701,4 +702,4 @@ r <- create_public_report_ytd(
 xl_files[[r[["name"]]]] <- r[["report"]]
 
 # - Combine public reports into single .xlsx file
-write_xlsx(xl_files, file.path(public_folder, "public_reports.xlsx"))
+write_xlsx(xl_files, file.path(public_folder, "public_reports_combined.xlsx"))
