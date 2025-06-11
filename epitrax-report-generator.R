@@ -370,9 +370,24 @@ convert_counts_to_rate <- function(counts, pop, digits, rate_adj_pop = 100000) {
   round(counts / pop * rate_adj_pop, digits = digits)
 }
 
-#' Create a public report
+#' Get Trend column of report
 #' 
-#' 'create_public_report' creates a public report for the given month.
+#' 'get_trend' compares values of two columns and produces a new column 
+#' containing the trend result.
+#' 
+#' @param col1 List. Current data.
+#' @param col2 List. Historical comparison data.
+#' 
+#' @returns Column containing the Trend markers.
+get_trend <- function(col1, col2) {
+  mapply(function(x, y) {
+    ifelse(x > y, "↑", ifelse(x < y, "↓", "→"))
+  }, col1, col2)
+}
+
+#' Create a monthly cross-section public report
+#' 
+#' 'create_public_report_month' creates a public report for the given month.
 #' 
 #' @param cases Dataframe. Disease case counts for each month and year.
 #' @param avgs Dataframe. Disease case count averages for each month.
@@ -383,7 +398,7 @@ convert_counts_to_rate <- function(counts, pop, digits, rate_adj_pop = 100000) {
 #' @param r_folder Filepath. Destination folder for the public report.
 #' 
 #' @returns List containing the report name and data.
-create_public_report <- function(cases, avgs, d_list, m, y, config, r_folder) {
+create_public_report_month <- function(cases, avgs, d_list, m, y, config, r_folder) {
   
   month_name <- month.abb[[m]]
   
@@ -413,7 +428,9 @@ create_public_report <- function(cases, avgs, d_list, m, y, config, r_folder) {
   }
   
   # - Convert disease names to public-facing versions
-  m_report <- merge(m_report, d_list, by.x = "Disease", by.y = "EpiTrax_name")
+  m_report <- merge(m_report, d_list, 
+                    by.x = "Disease", by.y = "EpiTrax_name", 
+                    all.x = TRUE, all.y = FALSE)
   m_report$Disease <- m_report$Public_name
   m_report$Public_name <- NULL
   m_report <- m_report[order(m_report$Disease),]
@@ -422,12 +439,47 @@ create_public_report <- function(cases, avgs, d_list, m, y, config, r_folder) {
   m_report <- aggregate(m_report[ , -1], by = list(Disease = m_report$Disease), "sum")
   
   # - Add Trends column last
-  m_report$Trend <- mapply(function(x, y) {
-    ifelse(x > y, "↑", ifelse(x < y, "↓", "→"))
-  }, m_report$Rate_per_100k, m_report$Avg_5yr_Rate)
+  m_report$Trend <- get_trend(m_report$Rate_per_100k, m_report$Avg_5yr_Rate)
   
   # - Write to CSV file
   r_name <- paste0("public_report_", month_name, report_year)
+  write_report_csv(m_report, paste0(r_name, ".csv"), r_folder)
+  
+  list("name" = r_name, "report" = m_report)
+}
+
+#' Create a YTD public report
+#' 
+#' 'create_public_report_ytd' creates a public report for YTD rates.
+#' 
+#' @param ytd_rates Dataframe. YTD case rates per 100k.
+#' @param d_list Dataframe. List of diseases to use for the report.
+#' @param r_folder Filepath. Destination folder for the public report.
+#' 
+#' @returns List containing the report name and data.
+create_public_report_ytd <- function(ytd_rates, d_list, r_folder) {
+  
+  # - Create the report data frame initializing the Rate_per_100k column to 0
+  m_report <- data.frame(
+    Disease = ytd_rates$disease,
+    YTD_Rate_per_100k = ytd_rates$Current_YTD_Rate_per_100k,
+    Avg_5yr_Rate = ytd_rates$Avg_5yr_YTD_Rate_per_100k
+  )
+  
+  # - Convert disease names to public-facing versions
+  m_report <- merge(m_report, d_list, by.x = "Disease", by.y = "EpiTrax_name")
+  m_report$Disease <- m_report$Public_name
+  m_report$Public_name <- NULL
+  m_report <- m_report[order(m_report$Disease),]
+  
+  # - Combine diseases with same public name (if any)
+  m_report <- aggregate(m_report[ , -1], by = list(Disease = m_report$Disease), "sum")
+  
+  # - Add Trends column last
+  m_report$Trend <- get_trend(m_report$YTD_Rate_per_100k, m_report$Avg_5yr_Rate)
+  
+  # - Write to CSV file
+  r_name <- "public_report_YTD"
   write_report_csv(m_report, paste0(r_name, ".csv"), r_folder)
   
   list("name" = r_name, "report" = m_report)
@@ -562,13 +614,13 @@ avg_5yr_ytd$counts <- avg_5yr_ytd$counts / num_yrs
 avg_5yr_ytd <- prep_report_data(avg_5yr_ytd, diseases$EpiTrax_name)
 
 ytd_report_counts <- data.frame(
-  Disease = current_ytd$disease,
+  disease = current_ytd$disease,
   Current_YTD_Counts = current_ytd$counts,
   Avg_5yr_YTD_Counts = avg_5yr_ytd$counts
 )
 
 ytd_report_rates <- data.frame(
-  Disease = current_ytd$disease,
+  disease = current_ytd$disease,
   Current_YTD_Rate_per_100k = convert_counts_to_rate(
     current_ytd$counts,
     pop = report_config$current_population,
@@ -592,6 +644,8 @@ write_xlsx(xl_files, file.path(internal_folder, "internal_reports.xlsx"))
 
 
 # Prepare Public Reports -------------------------------------------------------
+xl_files <- list()
+
 diseases <- get_public_disease_list(
   file.path(settings_folder, "public_report_diseases.csv"),
   default_diseases = epitrax_data_diseases
@@ -602,10 +656,8 @@ monthly_avgs <- prep_report_data(monthly_avgs, diseases$EpiTrax_name)
 # - Find the previous month of the report year
 report_month <- max(month_counts[month_counts$year == report_year, ]$month) - 1
 
-# - Create report table for most recent month and for 1 and 2 months prior
-xl_files <- list()
-
-r <- create_public_report(
+# - Create monthly cross-section report for most recent 3 months
+r <- create_public_report_month(
   cases = month_counts, 
   avgs = monthly_avgs, 
   d_list = diseases,
@@ -616,7 +668,7 @@ r <- create_public_report(
 )
 xl_files[[r[["name"]]]] <- r[["report"]]
 
-r <- create_public_report(
+r <- create_public_report_month(
   cases = month_counts, 
   avgs = monthly_avgs, 
   d_list = diseases,
@@ -627,13 +679,23 @@ r <- create_public_report(
 )
 xl_files[[r[["name"]]]] <- r[["report"]]
 
-r <- create_public_report(
+r <- create_public_report_month(
   cases = month_counts, 
   avgs = monthly_avgs, 
   d_list = diseases,
   m = report_month - 2, 
   y = report_year,
   config = report_config,
+  r_folder = public_folder
+)
+xl_files[[r[["name"]]]] <- r[["report"]]
+
+# - Create current YTD report
+ytd_report_rates <- prep_report_data(ytd_report_rates, diseases$EpiTrax_name)
+
+r <- create_public_report_ytd(
+  ytd_rates <- ytd_report_rates,
+  d_list = diseases,
   r_folder = public_folder
 )
 xl_files[[r[["name"]]]] <- r[["report"]]
