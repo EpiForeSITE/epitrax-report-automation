@@ -562,6 +562,7 @@ epitrax_data <- read_epitrax_data()
 epitrax_data_yrs <- sort(unique(epitrax_data$year))
 epitrax_data_diseases <- unique(epitrax_data$disease)
 report_year <- max(epitrax_data_yrs)
+report_month <- max(epitrax_data[epitrax_data$year == report_year,]$month)
 
 diseases <- get_internal_disease_list(
   file.path(settings_folder, "internal_report_diseases.csv"),
@@ -655,13 +656,11 @@ xl_files[["monthly_avgs"]] <- internal_monthly_avgs
 
 # YTD reports for current month ------------------------------------------------
 current_ytd <- month_counts[month_counts$year == report_year, ]
-ytd_month <- max(current_ytd$month)
-
 current_ytd <- aggregate(counts ~ disease, data = current_ytd, FUN = sum)
 current_ytd <- prep_report_data(current_ytd, diseases$EpiTrax_name)
 
 avg_5yr_ytd <- with(month_counts, month_counts[year != report_year & 
-                                                 month <= ytd_month, ])
+                                                 month <= report_month, ])
 avg_5yr_ytd <- aggregate(counts ~ disease, data = avg_5yr_ytd, FUN = sum)
 avg_5yr_ytd$counts <- avg_5yr_ytd$counts / num_yrs
 avg_5yr_ytd <- prep_report_data(avg_5yr_ytd, diseases$EpiTrax_name)
@@ -707,10 +706,7 @@ diseases <- get_public_disease_list(
 
 monthly_avgs <- prep_report_data(monthly_avgs, diseases$EpiTrax_name)
 
-# - Find the previous month of the report year
-report_month <- max(month_counts[month_counts$year == report_year, ]$month) - 1
-
-# - Create monthly cross-section report for most recent 3 months
+# - Create monthly cross-section report for most recent 4 months
 r <- create_public_report_month(
   cases = month_counts, 
   avgs = monthly_avgs, 
@@ -738,6 +734,17 @@ r <- create_public_report_month(
   avgs = monthly_avgs, 
   d_list = diseases,
   m = report_month - 2, 
+  y = report_year,
+  config = report_config,
+  r_folder = public_folder
+)
+xl_files[[r[["name"]]]] <- r[["report"]]
+
+r <- create_public_report_month(
+  cases = month_counts, 
+  avgs = monthly_avgs, 
+  d_list = diseases,
+  m = report_month - 3, 
   y = report_year,
   config = report_config,
   r_folder = public_folder
