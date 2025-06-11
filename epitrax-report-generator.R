@@ -1,3 +1,20 @@
+# -----------------------------------------------------------------------------
+# title: EpiTrax Report Generator
+# author: Andrew Pulsipher
+# date: 2025-06-11
+# 
+# This script generates monthly and YTD reports from EpiTrax data.
+# It reads in EpiTrax data, processes it, and generates reports in both internal
+# and public formats. It is intended to be run in RStudio.
+#
+# The script is maitained by the InsigheNet center ForeSITE. All the code is
+# available on GitHub at
+# https://github.com/EpiForeSITE/epitrax-report-automation.
+# 
+# If you have any questions, would like to get the latest version, or found
+# a bug, please go to the GitHub repository. 
+# -----------------------------------------------------------------------------
+
 # Libraries --------------------------------------------------------------------
 library(lubridate)
 library(writexl)
@@ -117,25 +134,45 @@ write_report_csv <- function(data, filename, folder) {
 #' 
 #' @returns The validated data with all unneeded columns removed.
 validate_data <- function(data) {
+
   # Check column names
-  expected_cols <- c("patient_mmwr_year", "patient_mmwr_week", "patient_disease")
+  expected_cols <- c(
+    integer = "patient_mmwr_year",
+    integer = "patient_mmwr_week",
+    character = "patient_disease"
+    )
+
   actual_cols <- colnames(data)
   
   if (!all(expected_cols %in% actual_cols)) {
-    stop("The EpiTrax data is missing one of the following fields:\n\n\t",
-         paste(expected_cols, collapse=", "), 
-         "\n\nPlease add the missing fields to the file and try again.")
+    stop(
+      "The EpiTrax data is missing one of the following fields:\n\n\t",
+      paste(expected_cols, collapse="\", \""), 
+      "\n\nThe following fields were found:\n\n\t",
+      paste(actual_cols, collapse="\", \""),
+      "\n\nPlease add the missing fields to the file and try again."
+    )
   }
   # Check column data types
-  if (class(data$patient_mmwr_week) != "integer" ||
-      class(data$patient_mmwr_year) != "integer" ||
-      class(data$patient_disease) != "character") {
-    stop("One or more columns in the EpiTrax dataset has an incorrect 
-         data type:\n\n",
-         "\t'patient_mmwr_week' should be of type 'integer'\n",
-         "\t'patient_mmwr_year' should be of type 'integer'\n",
-         "\t'patient_disease' should be of type 'character'\n",
-         "\nPlease try again with a valid dataset."
+  test_tmp <- Map(\(col, cls) {
+    class(data[[col]]) != cls
+  }, col = expected_cols, cls = names(expected_cols)) |> unlist()
+  
+  if (any(test_tmp)) {
+    stop(
+      "One or more columns in the EpiTrax dataset has an incorrect 
+      data type:\n\n",
+      paste(
+        expected_cols[test_tmp], "should be of type ", 
+        names(expected_cols)[test_tmp],
+        "but it is of type ",
+        sapply(data[expected_cols[test_tmp]], class),
+        collapse = "\n\t"
+        ),
+      "\t'patient_mmwr_week' should be of type 'integer'\n",
+      "\t'patient_mmwr_year' should be of type 'integer'\n",
+      "\t'patient_disease' should be of type 'character'\n",
+      "\nPlease try again with a valid dataset."
     )
   }
   # Remove all columns we're not using
