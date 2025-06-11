@@ -146,13 +146,16 @@ validate_data <- function(data) {
   
   if (!all(expected_cols %in% actual_cols)) {
     stop(
-      "The EpiTrax data is missing one of the following fields:\n\n\t",
-      paste(expected_cols, collapse="\", \""), 
-      "\n\nThe following fields were found:\n\n\t",
-      paste(actual_cols, collapse="\", \""),
+      "The EpiTrax data is missing one of the following fields:\n\n\t'",
+      paste(expected_cols, collapse="', '"), 
+      "'",
+      "\n\nThe following fields were found:\n\n\t'",
+      paste(actual_cols, collapse="', '"),
+      "'",
       "\n\nPlease add the missing fields to the file and try again."
     )
   }
+  
   # Check column data types
   test_tmp <- Map(\(col, cls) {
     class(data[[col]]) != cls
@@ -160,29 +163,29 @@ validate_data <- function(data) {
   
   if (any(test_tmp)) {
     stop(
-      "One or more columns in the EpiTrax dataset has an incorrect 
-      data type:\n\n",
-      paste(
-        expected_cols[test_tmp], "should be of type ", 
+      "One or more columns in the EpiTrax dataset has an incorrect data type:",
+      "\n\n",
+      paste0(
+        "\t- '",
+        expected_cols[test_tmp], "' should be of type '", 
         names(expected_cols)[test_tmp],
-        "but it is of type ",
+        "' but it is of type '",
         sapply(data[expected_cols[test_tmp]], class),
+        "'",
         collapse = "\n\t"
         ),
-      "\t'patient_mmwr_week' should be of type 'integer'\n",
-      "\t'patient_mmwr_year' should be of type 'integer'\n",
-      "\t'patient_disease' should be of type 'character'\n",
-      "\nPlease try again with a valid dataset."
+      "\n\nPlease try again with a valid dataset."
     )
   }
+  
   # Remove all columns we're not using
   # - Note this also rearranges the columns into the order of expected_cols
   data <- data[expected_cols]
   
   # Remove rows with missing or NA values
   if (any(is.na(data))) {
-    warning("The EpiTrax dataset contains missing or NA values which will be 
-            ignored when generating reports.")
+    warning("The EpiTrax dataset contains missing or NA values which will be ", 
+            "ignored when generating reports.")
   }
   data <- na.omit(data)
   
@@ -332,8 +335,8 @@ get_public_disease_list <- function(filepath, default_diseases) {
     
     # Validate file
     if (is.null(d_list$EpiTrax_name) || is.null(d_list$Public_name)) {
-      stop("File '", filepath, "' is incorrectly formatted. Please use the 
-           column names: 'EpiTrax_name' and 'Public_name'.")
+      stop("File '", filepath, "' is incorrectly formatted. Please use the ", 
+           "column names: 'EpiTrax_name' and 'Public_name'.")
     }
     
     d_list
