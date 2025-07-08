@@ -73,6 +73,13 @@ read_report_config <- function(config_filepath) {
       config$rounding_decimals <- 2
     }
     
+    if (is.null(config$keep_csvs) || 
+        class(config$keep_csvs) != "logical") {
+      warning("In '", config_filepath, "', 'keep_csvs' is missing or 
+            invalid. Using default value of true instead.")
+      config$keep_csvs <- true
+    }
+    
     config
   } else {
     
@@ -434,7 +441,7 @@ convert_counts_to_rate <- function(counts, pop, digits, rate_adj_pop = 100000) {
 #' @returns Column containing the Trend markers.
 get_trend <- function(col1, col2) {
   mapply(function(x, y) {
-    ifelse(x > y, "↑", ifelse(x < y, "↓", "→"))
+    ifelse(x > y, "Elevated", ifelse(x < y, "Less Than Expected", "Expected"))
   }, col1, col2)
 }
 
@@ -496,7 +503,9 @@ create_public_report_month <- function(cases, avgs, d_list, m, y, config, r_fold
   
   # - Write to CSV file
   r_name <- paste0("public_report_", month_name, report_year)
-  write_report_csv(m_report, paste0(r_name, ".csv"), r_folder)
+  if (config$keep_csvs) {
+    write_report_csv(m_report, paste0(r_name, ".csv"), r_folder)
+  }
   
   list("name" = r_name, "report" = m_report)
 }
@@ -507,10 +516,11 @@ create_public_report_month <- function(cases, avgs, d_list, m, y, config, r_fold
 #' 
 #' @param ytd_rates Dataframe. YTD case rates per 100k.
 #' @param d_list Dataframe. List of diseases to use for the report.
+#' @param config List. Settings to use for report.
 #' @param r_folder Filepath. Destination folder for the public report.
 #' 
 #' @returns List containing the report name and data.
-create_public_report_ytd <- function(ytd_rates, d_list, r_folder) {
+create_public_report_ytd <- function(ytd_rates, d_list, config, r_folder) {
   
   # - Create the report data frame initializing the Rate_per_100k column to 0
   m_report <- data.frame(
@@ -533,7 +543,9 @@ create_public_report_ytd <- function(ytd_rates, d_list, r_folder) {
   
   # - Write to CSV file
   r_name <- "public_report_YTD"
-  write_report_csv(m_report, paste0(r_name, ".csv"), r_folder)
+  if (config$keep_csvs) {
+    write_report_csv(m_report, paste0(r_name, ".csv"), r_folder)
+  }
   
   list("name" = r_name, "report" = m_report)
 }
@@ -595,7 +607,9 @@ colnames(annual_counts) <- c("disease", epitrax_data_yrs)
 # - Add missing diseases
 annual_counts <- prep_report_data(annual_counts, diseases$EpiTrax_name)
 # - Write to CSV
-write_report_csv(annual_counts, "annual_counts.csv", internal_folder)
+if (report_config$keep_csvs) {
+  write_report_csv(annual_counts, "annual_counts.csv", internal_folder)
+}
 # - Add to Excel List
 xl_files[["annual_counts"]] <- annual_counts
 
@@ -620,7 +634,9 @@ for (y in epitrax_data_yrs) {
   
   # - Write to CSV
   fname <- paste0("monthly_counts_", y)
-  write_report_csv(m_df, paste0(fname, ".csv"), internal_folder)
+  if (report_config$keep_csvs) {
+    write_report_csv(m_df, paste0(fname, ".csv"), internal_folder)
+  }
   
   # - Add to Excel List
   xl_files[[fname]] = m_df
@@ -648,7 +664,9 @@ avgs_fname <- with(epitrax_data_prev_yrs,
                    paste0("monthly_avgs_", min(year), "-", max(year), ".csv"))
 # - Add missing diseases
 internal_monthly_avgs <- prep_report_data(monthly_avgs, diseases$EpiTrax_name)
-write_report_csv(internal_monthly_avgs, avgs_fname, internal_folder)
+if (report_config$keep_csvs) {
+  write_report_csv(internal_monthly_avgs, avgs_fname, internal_folder)
+}
 
 # - Add to Excel List
 xl_files[["monthly_avgs"]] <- internal_monthly_avgs
@@ -684,8 +702,10 @@ ytd_report_rates <- data.frame(
 )
 
 # - Write to CSV
-write_report_csv(ytd_report_counts, "ytd_report_counts.csv", internal_folder)
-write_report_csv(ytd_report_rates, "ytd_report_rates.csv", internal_folder)
+if (report_config$keep_csvs) {
+  write_report_csv(ytd_report_counts, "ytd_report_counts.csv", internal_folder)
+  write_report_csv(ytd_report_rates, "ytd_report_rates.csv", internal_folder)
+}
 
 # - Add to Excel List
 xl_files[["ytd_report_counts"]] <- ytd_report_counts
@@ -757,6 +777,7 @@ ytd_report_rates <- prep_report_data(ytd_report_rates, diseases$EpiTrax_name)
 r <- create_public_report_ytd(
   ytd_rates <- ytd_report_rates,
   d_list = diseases,
+  config = report_config,
   r_folder = public_folder
 )
 xl_files[[r[["name"]]]] <- r[["report"]]
