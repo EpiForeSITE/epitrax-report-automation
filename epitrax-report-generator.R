@@ -73,11 +73,11 @@ read_report_config <- function(config_filepath) {
       config$rounding_decimals <- 2
     }
     
-    if (is.null(config$keep_csvs) || 
-        class(config$keep_csvs) != "logical") {
-      warning("In '", config_filepath, "', 'keep_csvs' is missing or 
+    if (is.null(config$generate_csvs) || 
+        class(config$generate_csvs) != "logical") {
+      warning("In '", config_filepath, "', 'generate_csvs' is missing or 
             invalid. Using default value of TRUE instead.")
-      config$keep_csvs <- TRUE
+      config$generate_csvs <- TRUE
     }
     
     config
@@ -87,12 +87,12 @@ read_report_config <- function(config_filepath) {
             'current_population' = 100,000
             'avg_5yr_population' = 100,000
             'rounding_decimals' = 2
-            'keep_csvs' = TRUE")
+            'generate_csvs' = TRUE")
     
     config <- list(current_population = 100000, 
                    avg_5yr_population = 100000,
                    rounding_decimals = 2,
-                   keep_csvs = TRUE)
+                   generate_csvs = TRUE)
     
     config
   }
@@ -505,7 +505,7 @@ create_public_report_month <- function(cases, avgs, d_list, m, y, config, r_fold
   
   # - Write to CSV file
   r_name <- paste0("public_report_", month_name, report_year)
-  if (config$keep_csvs) {
+  if (config$generate_csvs) {
     write_report_csv(m_report, paste0(r_name, ".csv"), r_folder)
   }
   
@@ -545,7 +545,7 @@ create_public_report_ytd <- function(ytd_rates, d_list, config, r_folder) {
   
   # - Write to CSV file
   r_name <- "public_report_YTD"
-  if (config$keep_csvs) {
+  if (config$generate_csvs) {
     write_report_csv(m_report, paste0(r_name, ".csv"), r_folder)
   }
   
@@ -609,7 +609,7 @@ colnames(annual_counts) <- c("disease", epitrax_data_yrs)
 # - Add missing diseases
 annual_counts <- prep_report_data(annual_counts, diseases$EpiTrax_name)
 # - Write to CSV
-if (report_config$keep_csvs) {
+if (report_config$generate_csvs) {
   write_report_csv(annual_counts, "annual_counts.csv", internal_folder)
 }
 # - Add to Excel List
@@ -636,7 +636,7 @@ for (y in epitrax_data_yrs) {
   
   # - Write to CSV
   fname <- paste0("monthly_counts_", y)
-  if (report_config$keep_csvs) {
+  if (report_config$generate_csvs) {
     write_report_csv(m_df, paste0(fname, ".csv"), internal_folder)
   }
   
@@ -666,7 +666,7 @@ avgs_fname <- with(epitrax_data_prev_yrs,
                    paste0("monthly_avgs_", min(year), "-", max(year), ".csv"))
 # - Add missing diseases
 internal_monthly_avgs <- prep_report_data(monthly_avgs, diseases$EpiTrax_name)
-if (report_config$keep_csvs) {
+if (report_config$generate_csvs) {
   write_report_csv(internal_monthly_avgs, avgs_fname, internal_folder)
 }
 
@@ -704,7 +704,7 @@ ytd_report_rates <- data.frame(
 )
 
 # - Write to CSV
-if (report_config$keep_csvs) {
+if (report_config$generate_csvs) {
   write_report_csv(ytd_report_counts, "ytd_report_counts.csv", internal_folder)
   write_report_csv(ytd_report_rates, "ytd_report_rates.csv", internal_folder)
 }
