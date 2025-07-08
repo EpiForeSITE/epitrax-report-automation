@@ -76,8 +76,8 @@ read_report_config <- function(config_filepath) {
     if (is.null(config$keep_csvs) || 
         class(config$keep_csvs) != "logical") {
       warning("In '", config_filepath, "', 'keep_csvs' is missing or 
-            invalid. Using default value of true instead.")
-      config$keep_csvs <- true
+            invalid. Using default value of TRUE instead.")
+      config$keep_csvs <- TRUE
     }
     
     config
@@ -86,11 +86,13 @@ read_report_config <- function(config_filepath) {
     warning("No report configuration file provided. Using default values:
             'current_population' = 100,000
             'avg_5yr_population' = 100,000
-            'rounding_decimals' = 2")
+            'rounding_decimals' = 2
+            'keep_csvs' = TRUE")
     
     config <- list(current_population = 100000, 
                    avg_5yr_population = 100000,
-                   rounding_decimals = 2)
+                   rounding_decimals = 2,
+                   keep_csvs = TRUE)
     
     config
   }
