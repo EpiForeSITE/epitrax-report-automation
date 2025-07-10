@@ -661,12 +661,13 @@ monthly_avgs$counts <- round(monthly_avgs$counts / num_yrs,
 # - Reshape data to use months as columns and disease as rows
 monthly_avgs <- reshape_monthly_wide(monthly_avgs)
 
-# - Write to CSV
-avgs_fname <- with(epitrax_data_prev_yrs,
-                   paste0("monthly_avgs_", min(year), "-", max(year), ".csv"))
 # - Add missing diseases
 internal_monthly_avgs <- prep_report_data(monthly_avgs, diseases$EpiTrax_name)
+
+# - Write to CSV
 if (report_config$generate_csvs) {
+  avgs_fname <- with(epitrax_data_prev_yrs,
+                     paste0("monthly_avgs_", min(year), "-", max(year), ".csv"))
   write_report_csv(internal_monthly_avgs, avgs_fname, internal_folder)
 }
 
@@ -729,49 +730,18 @@ diseases <- get_public_disease_list(
 monthly_avgs <- prep_report_data(monthly_avgs, diseases$EpiTrax_name)
 
 # - Create monthly cross-section report for most recent 4 months
-r <- create_public_report_month(
-  cases = month_counts, 
-  avgs = monthly_avgs, 
-  d_list = diseases,
-  m = report_month, 
-  y = report_year,
-  config = report_config,
-  r_folder = public_folder
-)
-xl_files[[r[["name"]]]] <- r[["report"]]
-
-r <- create_public_report_month(
-  cases = month_counts, 
-  avgs = monthly_avgs, 
-  d_list = diseases,
-  m = report_month - 1, 
-  y = report_year,
-  config = report_config,
-  r_folder = public_folder
-)
-xl_files[[r[["name"]]]] <- r[["report"]]
-
-r <- create_public_report_month(
-  cases = month_counts, 
-  avgs = monthly_avgs, 
-  d_list = diseases,
-  m = report_month - 2, 
-  y = report_year,
-  config = report_config,
-  r_folder = public_folder
-)
-xl_files[[r[["name"]]]] <- r[["report"]]
-
-r <- create_public_report_month(
-  cases = month_counts, 
-  avgs = monthly_avgs, 
-  d_list = diseases,
-  m = report_month - 3, 
-  y = report_year,
-  config = report_config,
-  r_folder = public_folder
-)
-xl_files[[r[["name"]]]] <- r[["report"]]
+for (offset in 0:3) {
+  r <- create_public_report_month(
+    cases = month_counts, 
+    avgs = monthly_avgs, 
+    d_list = diseases,
+    m = report_month - offset, 
+    y = report_year,
+    config = report_config,
+    r_folder = public_folder
+  )
+  xl_files[[r[["name"]]]] <- r[["report"]]
+}
 
 # - Create current YTD report
 ytd_report_rates <- prep_report_data(ytd_report_rates, diseases$EpiTrax_name)

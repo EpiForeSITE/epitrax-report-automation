@@ -65,6 +65,8 @@ In the `report_settings/` folder, you may add three **OPTIONAL** files:
       - If not provided, defaults to `current_population`.
     - `rounding_decimals`: How many digits to round decimals
       - If not provided, defaults to 2.
+    - `generate_csvs`: Whether to generate CSV files for internal reports. When FALSE, only Excel files will be generated.
+      - If not provided, defaults to `TRUE`.
 
 ### Important Things to Keep in Mind
 
