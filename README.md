@@ -1,4 +1,11 @@
 # epitrax-report-automation
+<!-- badges: start -->
+[![ForeSITE Group](https://github.com/EpiForeSITE/software/raw/e82ed88f75e0fe5c0a1a3b38c2b94509f122019c/docs/assets/foresite-software-badge.svg)](https://github.com/EpiForeSITE)
+<!-- badges: end -->
+
+> [!WARNING]
+> This repository is inactive. The `epitrax-report-generator.R` script has been converted to the R package `epitraxr`. Please visit the `epitraxr` project repo instead: https://github.com/EpiForeSITE/epitraxr.
+
 Automating Disease Surveillance Report Creation for Local Health Departments in Utah based on EpiTrax data.
 
 This tool is a work in progress. Many of the functions used here will ultimately end up in an R package which will be wrapped in an R Shiny application for better usability. In the meantime, we hope this tool will enable local health officials to automate parts of their report generation process.
